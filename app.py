@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
 import os
-
 import aws_cdk as cdk
+from dotenv import load_dotenv
+from stacks.agent_resources_stack import CdkAgentsResourcesStack
+from cdk_aje_libs.constants.environments import Environments
+from cdk_aje_libs.constants.project_config import ProjectConfig
 
-from cdk_agents_resources.cdk_agents_resources_stack import CdkAgentsResourcesStack
-
-
+load_dotenv() 
 app = cdk.App()
-CdkAgentsResourcesStack(app, "CdkAgentsResourcesStack",
-    # If you don't specify 'env', this stack will be environment-agnostic.
-    # Account/Region-dependent features and context lookups will not work,
-    # but a single synthesized template can be deployed anywhere.
 
-    # Uncomment the next line to specialize this stack for the AWS Account
-    # and Region that are implied by the current CLI configuration.
-
-    #env=cdk.Environment(account=os.getenv('CDK_DEFAULT_ACCOUNT'), region=os.getenv('CDK_DEFAULT_REGION')),
-
-    # Uncomment the next line if you know exactly what Account and Region you
-    # want to deploy the stack to. */
-
-    #env=cdk.Environment(account='123456789012', region='us-east-1'),
-
-    # For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html
+CONFIG = app.node.try_get_context("project_config")
+CONFIG["account_id"] = os.getenv("ACCOUNT_ID", None)
+CONFIG["region_name"] = os.getenv("REGION_NAME", None)
+CONFIG["environment"] = os.getenv("ENVIRONMENT", None) 
+CONFIG["separator"] = os.getenv("SEPARATOR", "-") 
+project_config = ProjectConfig.from_dict(CONFIG)
+      
+CdkAgentsResourcesStack(
+    app, 
+    "CdkAgentsResourcesStack",
+    project_config,
+    env=cdk.Environment(
+        account=project_config.account_id,
+        region=project_config.region_name
     )
+)
 
 app.synth()
