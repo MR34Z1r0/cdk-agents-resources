@@ -1,4 +1,3 @@
-# delete_resource.py
 import json
 import os
 from typing import Dict, Any
@@ -8,10 +7,6 @@ from aje_libs.common.helpers.s3_helper import S3Helper
 from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
 from aje_libs.bd.helpers.pinecone_helper import PineconeHelper
 from aje_libs.common.logger import custom_logger
-#from dotenv import load_dotenv
-import boto3
-# Cargar variables de entorno desde archivo .env
-#load_dotenv()
 
 # Configuración
 FILES_TABLE_NAME = os.environ.get("FILES_TABLE_NAME", "db_learning_resources")
@@ -22,17 +17,10 @@ PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY", "")
 EMBEDDINGS_MODEL_ID = os.environ.get("EMBEDDINGS_MODEL_ID", "amazon.titan-embed-text-v2:0")
 EMBEDDINGS_REGION = os.environ.get("EMBEDDINGS_REGION", "us-west-2")
 
-# Configurar logger
-#AWS_PROFILE = os.environ.get("AWS_PROFILE")
-#AWS_REGION = os.environ.get("AWS_REGION")
-
 OWNER = os.environ.get("OWNER")
 PROJECT_NAME = os.environ.get("PROJECT_NAME")
 
 logger = custom_logger(__name__, owner=OWNER, service=PROJECT_NAME)
-
-logger.info("Iniciando logging")
-#boto3.setup_default_session(profile_name=AWS_PROFILE, region_name=AWS_REGION)
 
 # Crear helper instances
 s3_helper = S3Helper(bucket_name=S3_BUCKET)
@@ -55,58 +43,69 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Handler principal de Lambda para eliminar un recurso educativo.
     
-    :param event: Evento de Lambda (debe contener body con RecursoDidacticoId)
+    :param event: Evento de Lambda (debe contener body con resourceId)
     :param context: Contexto de Lambda
-    :return: Respuesta en formato API Gateway
+    :return: Respuesta estandarizada
     """
     try:
         # Parsear el body del evento
-        body = json.loads(event.get('body', '{}'))
+        if 'body' in event:
+            if isinstance(event['body'], dict):
+                body = event['body']
+            else:
+                body = json.loads(event['body'])
+        else:
+            body = event
         
-        # Validar campos requeridos
-        required_fields = ['RecursoDidacticoId']
-        missing_fields = [field for field in required_fields if field not in body]
-        
-        if missing_fields:
+        # Validar campos requeridos usando formato estandarizado
+        if "resourceId" not in body:
             return {
-                'statusCode': 400,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                'body': json.dumps({
-                    'success': False,
-                    'message': f"Missing required fields: {', '.join(missing_fields)}"
-                })
+                "success": False,
+                "message": "Falta el campo resourceId",
+                "statusCode": 400,
+                "error": {
+                    "code": "MISSING_FIELD",
+                    "details": "El campo resourceId es obligatorio"
+                }
             }
         
-        resource_id = body['RecursoDidacticoId']
+        resource_id = body["resourceId"]
         
         # Procesar la eliminación del recurso
         result = process_resource_deletion(resource_id)
         
-        return {
-            'statusCode': 200 if result['success'] else 404 if 'not found' in result.get('message', '').lower() else 500,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps(result)
-        }
+        if result["success"]:
+            return {
+                "success": True,
+                "message": result["message"],
+                "statusCode": 200,
+                "data": {
+                    "resourceId": resource_id,
+                    "details": result.get("details", {})
+                }
+            }
+        else:
+            status_code = 404 if "no existe" in result.get("message", "").lower() else 500
+            return {
+                "success": False,
+                "message": result["message"],
+                "statusCode": status_code,
+                "error": {
+                    "code": "RESOURCE_DELETION_FAILED",
+                    "details": result["message"]
+                }
+            }
         
     except Exception as e:
         logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
         return {
-            'statusCode': 500,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps({
-                'success': False,
-                'message': 'Internal server error',
-                'error': str(e)
-            })
+            "success": False,
+            "message": "Error interno del servidor",
+            "statusCode": 500,
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "details": str(e)
+            }
         }
 
 def process_resource_deletion(resource_id: str) -> Dict[str, Any]:

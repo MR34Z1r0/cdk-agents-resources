@@ -4,25 +4,15 @@ import boto3
 from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
 from aje_libs.common.logger import custom_logger
 import traceback
-#from dotenv import load_dotenv
 from boto3.dynamodb.conditions import Attr
-
-# Cargar variables de entorno desde archivo .env
-#load_dotenv()
 
 # Configurar variables de entorno
 DYNAMO_CHAT_HISTORY_TABLE = os.environ.get("DYNAMO_CHAT_HISTORY_TABLE")
 
-#AWS_PROFILE = os.environ.get("AWS_PROFILE")
-#AWS_REGION = os.environ.get("AWS_REGION")
-
 OWNER = os.environ.get("OWNER")
 PROJECT_NAME = os.environ.get("PROJECT_NAME")
 
-#logger = custom_logger(__name__, owner=OWNER, service=PROJECT_NAME)
-
-logger.info("Iniciando logging")
-boto3.setup_default_session(profile_name=AWS_PROFILE, region_name=AWS_REGION)
+logger = custom_logger(__name__, owner=OWNER, service=PROJECT_NAME)
 
 # Inicializar DynamoDBHelper
 dynamo_chat_history = DynamoDBHelper(
@@ -45,22 +35,24 @@ def lambda_handler(event, context):
         else:
             body = event
         
-        # Validar campos requeridos
-        required_fields = ["user_id", "syllabus_event_id"]
+        # Validar campos requeridos usando formato estandarizado
+        required_fields = ["userId", "syllabusEventId"]
         missing_fields = [field for field in required_fields if field not in body]
         
         if missing_fields:
             logger.error(f"Campos requeridos faltantes: {missing_fields}")
             return {
+                "success": False,
+                "message": f"Campos requeridos faltantes: {missing_fields}",
                 "statusCode": 400,
-                "body": json.dumps({
-                    "success": False,
-                    "message": f"Campos requeridos faltantes: {missing_fields}"
-                })
+                "error": {
+                    "code": "MISSING_FIELDS",
+                    "details": f"Campos requeridos faltantes: {missing_fields}"
+                }
             }
         
-        user_id = body["user_id"]
-        syllabus_event_id = body["syllabus_event_id"]
+        user_id = body["userId"]
+        syllabus_event_id = body["syllabusEventId"]
         
         logger.info(f"Eliminando historial para usuario: {user_id}, syllabus: {syllabus_event_id}")
         
@@ -72,7 +64,7 @@ def lambda_handler(event, context):
             filter_expression=filter_expression
         )
         
-        logger.info(f"items_to_delete: {items_to_delete}")
+        logger.info(f"Items encontrados para eliminar: {len(items_to_delete)}")
         
         # Filtrar por ALUMNO_ID en memoria
         filtered_items = [
@@ -104,23 +96,24 @@ def lambda_handler(event, context):
         logger.info(f"Se marcaron {deleted_count} items como eliminados exitosamente")
         
         return {
+            "success": True,
+            "message": f"Historial eliminado exitosamente",
             "statusCode": 200,
-            "body": json.dumps({
-                "success": True,
-                "message": f"Historial eliminado exitosamente. {deleted_count} mensajes marcados como eliminados.",
-                "data": {"deleted_count": deleted_count}
-            })
+            "data": {
+                "deletedCount": deleted_count
+            }
         }
         
     except Exception as e:
         logger.error(f"Error en delete_history: {str(e)}")
-        logger.debug(traceback.format_exc())
+        logger.error(traceback.format_exc())
         
         return {
+            "success": False,
+            "message": "Error al eliminar historial",
             "statusCode": 500,
-            "body": json.dumps({
-                "success": False,
-                "message": "Error al eliminar historial",
-                "error": str(e)
-            })
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "details": str(e)
+            }
         }

@@ -1,30 +1,19 @@
-# add_resource.py
 import json
 import os
-from uuid import uuid4
 import hashlib
 import requests
 import unicodedata
 import re
 from pathlib import Path
 from typing import Dict, Any, List
+from uuid import uuid4
 
 # Importar helpers de aje-libs
 from aje_libs.common.helpers.s3_helper import S3Helper
 from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
 from aje_libs.bd.helpers.pinecone_helper import PineconeHelper
-from aje_libs.documents.helpers.pdf_helper import PDFHelper
-from aje_libs.documents.helpers.doc_helper import DOCXHelper
-from aje_libs.documents.helpers.xls_helper import ExcelHelper
-from aje_libs.documents.helpers.ppt_helper import PPTXHelper
 from aje_libs.documents.helpers.document_processor import DocumentProcessor
 from aje_libs.common.logger import custom_logger
-from aje_libs.common.helpers.bedrock_helper import BedrockHelper
-#from dotenv import load_dotenv
-import boto3
-
-# Cargar variables de entorno desde archivo .env
-#load_dotenv()
 
 # Configuración
 FILES_TABLE_NAME = os.environ.get("FILES_TABLE_NAME", "db_learning_resources")
@@ -37,17 +26,10 @@ EMBEDDINGS_REGION = os.environ.get("EMBEDDINGS_REGION", "us-west-2")
 DOWNLOAD_FOLDER = "/tmp/downloads"
 S3_PATH = "SOFIA_FILE/PLANIFICACION/AV_Recursos"
 
-# Configurar logger
-#AWS_PROFILE = os.environ.get("AWS_PROFILE")
-#AWS_REGION = os.environ.get("AWS_REGION")
-
 OWNER = os.environ.get("OWNER")
 PROJECT_NAME = os.environ.get("PROJECT_NAME")
 
 logger = custom_logger(__name__, owner=OWNER, service=PROJECT_NAME)
-
-logger.info("Iniciando logging")
-#boto3.setup_default_session(profile_name=AWS_PROFILE, region_name=AWS_REGION)
 
 # Crear helper instances
 s3_helper = S3Helper(bucket_name=S3_BUCKET)
@@ -66,66 +48,97 @@ pinecone_helper = PineconeHelper(
     embeddings_region=EMBEDDINGS_REGION
 )
 document_processor = DocumentProcessor()
-bedrock_helper = BedrockHelper(region_name=EMBEDDINGS_REGION)
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Handler principal de Lambda para agregar un recurso educativo.
     
-    :param event: Evento de Lambda (debe contener body con RecursoDidacticoId, TituloRecurso, DriveId)
+    :param event: Evento de Lambda (debe contener body con resourceId, content.title, content.driveId)
     :param context: Contexto de Lambda
-    :return: Respuesta en formato API Gateway
+    :return: Respuesta estandarizada
     """
     try:
         # Parsear el body del evento
-        body = json.loads(event.get('body', '{}'))
+        if 'body' in event:
+            if isinstance(event['body'], dict):
+                body = event['body']
+            else:
+                body = json.loads(event['body'])
+        else:
+            body = event
         
-        # Validar campos requeridos
-        required_fields = ['RecursoDidacticoId', 'TituloRecurso', 'DriveId']
-        missing_fields = [field for field in required_fields if field not in body]
-        
-        if missing_fields:
+        # Validar campos requeridos usando formato estandarizado
+        if "resourceId" not in body:
             return {
-                'statusCode': 400,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                'body': json.dumps({
-                    'success': False,
-                    'message': f"Missing required fields: {', '.join(missing_fields)}"
-                })
+                "success": False,
+                "message": "Falta el campo resourceId",
+                "statusCode": 400,
+                "error": {
+                    "code": "MISSING_FIELD",
+                    "details": "El campo resourceId es obligatorio"
+                }
             }
         
-        resource_id = body['RecursoDidacticoId']
-        title = body['TituloRecurso']
-        drive_id = body['DriveId']
+        if "content" not in body or not isinstance(body["content"], dict):
+            return {
+                "success": False,
+                "message": "Falta el campo content o no es un objeto",
+                "statusCode": 400,
+                "error": {
+                    "code": "INVALID_CONTENT",
+                    "details": "El campo content es obligatorio y debe ser un objeto"
+                }
+            }
+        
+        content = body["content"]
+        if "title" not in content or "driveId" not in content:
+            return {
+                "success": False,
+                "message": "Faltan campos obligatorios en content",
+                "statusCode": 400,
+                "error": {
+                    "code": "MISSING_CONTENT_FIELDS",
+                    "details": "Los campos title y driveId son obligatorios en content"
+                }
+            }
+        
+        resource_id = body["resourceId"]
+        title = content["title"]
+        drive_id = content["driveId"]
         
         # Procesar el recurso
         result = process_resource_addition(resource_id, title, drive_id)
         
-        return {
-            'statusCode': 200 if result['success'] else 500,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps(result)
-        }
+        if result['success']:
+            return {
+                "success": True,
+                "message": "Recurso agregado correctamente",
+                "statusCode": 200,
+                "data": {
+                    "resourceId": resource_id
+                }
+            }
+        else:
+            return {
+                "success": False,
+                "message": result['message'],
+                "statusCode": 500,
+                "error": {
+                    "code": "RESOURCE_ADDITION_FAILED",
+                    "details": result['message']
+                }
+            }
         
     except Exception as e:
         logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
         return {
-            'statusCode': 500,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps({
-                'success': False,
-                'message': 'Internal server error',
-                'error': str(e)
-            })
+            "success": False,
+            "message": "Error interno del servidor",
+            "statusCode": 500,
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "details": str(e)
+            }
         }
 
 def process_resource_addition(resource_id: str, title: str, drive_id: str) -> Dict[str, Any]:

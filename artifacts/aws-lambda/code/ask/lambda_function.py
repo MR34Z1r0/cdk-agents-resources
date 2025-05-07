@@ -4,11 +4,8 @@ import boto3
 from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
 from aje_libs.bd.helpers.pinecone_helper import PineconeHelper
 from aje_libs.common.logger import custom_logger
-#from dotenv import load_dotenv
 
-# Cargar variables de entorno desde archivo .env
-#load_dotenv()
-  
+# Configuración de variables de entorno
 BEDROCK_CHATBOT_MODEL_ID = os.environ.get("BEDROCK_CHATBOT_MODEL_ID", "us.meta.llama3-2-3b-instruct-v1:0")
 BEDROCK_CHATBOT_REGION = os.environ.get("BEDROCK_CHATBOT_REGION", "us-west-2")
 BEDROCK_CHATBOT_LLM_MAX_TOKENS = int(os.environ.get("BEDROCK_CHATBOT_LLM_MAX_TOKENS", 1024))
@@ -23,18 +20,12 @@ EMBEDDINGS_MODEL_ID = os.environ.get("EMBEDDINGS_MODEL_ID")
 PINECONE_MAX_RETRIEVE_DOCUMENTS = int(os.environ.get("PINECONE_MAX_RETRIEVE_DOCUMENTS", 6))
 PINECONE_MIN_THRESHOLD = float(os.environ.get("PINECONE_MIN_THRESHOLD", 0.5))
 
-#AWS_PROFILE = os.environ.get("AWS_PROFILE")
-#AWS_REGION = os.environ.get("AWS_REGION")
-
 OWNER = os.environ.get("OWNER")
 PROJECT_NAME = os.environ.get("PROJECT_NAME")
 
 logger = custom_logger(__name__, owner=OWNER, service=PROJECT_NAME)
 
-logger.info("Iniciando logging")
-#boto3.setup_default_session(profile_name=AWS_PROFILE, region_name=AWS_REGION)
-
-# Inicialización de recursos (fuera del handler para reutilización en ejecuciones posteriores)
+# Inicialización de recursos
 dynamo_chat_history = DynamoDBHelper(
     table_name=DYNAMO_CHAT_HISTORY_TABLE,
     pk_name="ALUMNO_ID",
@@ -113,7 +104,6 @@ def get_message_history(alumno_id, silabo_id, cant_items=CHATBOT_HISTORY_ELEMENT
         key_condition = f"ALUMNO_ID = '{alumno_id}'"
         filter_expression = f"SILABUS_ID = '{silabo_id}' AND IS_DELETED = false"
         
-        # Usamos scan_table ya que necesitamos aplicar un filtro complejo
         messages = dynamo_chat_history.scan_table(
             filter_expression=filter_expression,
             limit=cant_items
@@ -214,25 +204,39 @@ def lambda_handler(event, context):
         else:
             body = event
         
-        message = body
-        logger.info(f"Mensaje recibido: {message.keys()}")
-        
-        # Verificar que los campos necesarios estén presentes
-        required_fields = ["user_id", "syllabus_event_id", "message"]
-        missing_fields = [field for field in required_fields if field not in message]
+        # Validar que los campos necesarios estén presentes usando el formato estandarizado
+        required_fields = ["userId", "syllabusEventId", "message"]
+        missing_fields = [field for field in required_fields if field not in body]
         
         if missing_fields:
             logger.error(f"Campos requeridos faltantes: {missing_fields}")
             return {
                 "success": False,
-                "answer": "Faltan campos requeridos en la solicitud",
-                "message": f"Campos requeridos faltantes: {missing_fields}"
+                "message": f"Campos requeridos faltantes: {missing_fields}",
+                "statusCode": 400,
+                "error": {
+                    "code": "MISSING_FIELDS",
+                    "details": f"Campos requeridos faltantes: {missing_fields}"
+                }
             }
+        
+        # Extraer datos del payload estandarizado
+        user_id = body["userId"]
+        syllabus_event_id = body["syllabusEventId"]
+        message_text = body["message"]
+        
+        # Extraer metadatos (opcionales)
+        metadata = body.get("metadata", {})
+        asistente_nombre = metadata.get("assistantName", "Asistente")
+        usuario_nombre = metadata.get("userName", "Estudiante")
+        usuario_rol = metadata.get("userRole", "Estudiante")
+        institucion = metadata.get("institution", "Universidad")
+        curso = metadata.get("course", "Curso")
         
         # Obtener historial de conversación
         chat_history = get_message_history(
-            message["user_id"],
-            message["syllabus_event_id"],
+            user_id,
+            syllabus_event_id,
             cant_items=CHATBOT_HISTORY_ELEMENTS
         )
         
@@ -246,22 +250,22 @@ def lambda_handler(event, context):
  
         # Obtener contexto
         # Busca los resources de ese syllabus_event_id
-        logger.info(f"Buscando recursos para syllabus_event_id: {message['syllabus_event_id']}")
-        data = search_in_dynamodb(message["syllabus_event_id"])
+        logger.info(f"Buscando recursos para syllabus_event_id: {syllabus_event_id}")
+        data = search_in_dynamodb(syllabus_event_id)
         
         # Se envía los resources encontrados para buscar en Pinecone
-        pinecone_context = get_documents_context(message["message"], None, data)
+        pinecone_context = get_documents_context(message_text, None, data)
         
         # Construir prompt
         prompt = DATA_PROMPT.format(
-            asistente_nombre=message.get("asistente_nombre", "Asistente"),
-            usuario_nombre=message.get("usuario_nombre", "Estudiante"),
-            usuario_rol=message.get("usuario_rol", "Estudiante"),
-            institucion=message.get("institucion", "Universidad"),
-            curso=message.get("curso", "Curso"),
+            asistente_nombre=asistente_nombre,
+            usuario_nombre=usuario_nombre,
+            usuario_rol=usuario_rol,
+            institucion=institucion,
+            curso=curso,
             chat_history=formatted_history,
             bd_context=pinecone_context,
-            question=message.get("message", "")
+            question=message_text
         )
 
         # Generar respuesta
@@ -275,28 +279,35 @@ def lambda_handler(event, context):
         
         # Guardar en historial
         upload_message(
-            message.get("user_id", ""),
-            message.get("syllabus_event_id", ""),
-            message.get("message", ""),
+            user_id,
+            syllabus_event_id,
+            message_text,
             answer,
-            message.get("context", "") # Por ahora está vacío
+            body.get("context", "") # Por ahora está vacío
         )
         
-        # Retornar respuesta
-        logger.info("Procesamiento completado con éxito")
+        # Retornar respuesta en formato estandarizado
         return {
+            "success": True,
+            "message": "Respuesta generada correctamente",
+            "statusCode": 200,
+            "data": {
                 "answer": answer,
-                "input_tokens": response['usage']['inputTokens'],
-                "output_tokens": response['usage']['outputTokens'],
-                "success": True
+                "inputTokens": response['usage']['inputTokens'],
+                "outputTokens": response['usage']['outputTokens']
             }
+        }
         
     except Exception as e:
         logger.error(f"Error en la función Lambda: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
         return {
-                "success": False,
-                "answer": "Ocurrió un error procesando tu solicitud",
-                "message": str(e)
+            "success": False,
+            "message": "Ocurrió un error procesando tu solicitud",
+            "statusCode": 500,
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "details": str(e)
             }
+        }
