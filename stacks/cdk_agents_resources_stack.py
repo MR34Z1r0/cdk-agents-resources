@@ -252,8 +252,16 @@ class CdkAgentsResourcesStack(Stack):
         """
         Method to create the REST-API Gateway for exposing the chatbot
         functionalities.
-        """ 
-        # Create the API Gateway without specifying a default handler
+        """
+        # Create CloudWatch LogGroup for API Gateway logs
+        api_log_group = logs.LogGroup(
+            self,
+            f"{self.PROJECT_CONFIG.project_name}-api-logs",
+            retention=logs.RetentionDays.ONE_WEEK,
+            removal_policy=RemovalPolicy.DESTROY
+        )
+        
+        # Create the API Gateway 
         self.api = apigw.RestApi(
             self,
             self.PROJECT_CONFIG.app_config['api_gw_name'],
@@ -262,19 +270,37 @@ class CdkAgentsResourcesStack(Stack):
                 stage_name=self.PROJECT_CONFIG.environment.value.lower(),
                 description=f"REST API for {self.PROJECT_CONFIG.project_name}",
                 metrics_enabled=True,
+                logging_level=apigw.MethodLoggingLevel.INFO,
+                data_trace_enabled=True,
+                access_log_destination=apigw.LogGroupLogDestination(api_log_group),
+                access_log_format=apigw.AccessLogFormat.json_with_standard_fields(
+                    caller=True,
+                    http_method=True,
+                    ip=True,
+                    protocol=True,
+                    request_time=True,
+                    resource_path=True,
+                    response_length=True,
+                    status=True,
+                    user=True
+                )
             ),    
             default_cors_preflight_options=apigw.CorsOptions(
                 allow_origins=apigw.Cors.ALL_ORIGINS,
-                allow_methods=["GET", "POST"],
-                allow_headers=["*"],
+                allow_methods=["GET", "POST", "OPTIONS"],
+                allow_headers=["Content-Type", "Authorization", "X-Amz-Date", "X-Api-Key", "X-Amz-Security-Token", "*"],
+                max_age=Duration.days(1)
             ),
             default_method_options=apigw.MethodOptions(
                 api_key_required=False,
                 authorization_type=apigw.AuthorizationType.NONE,
             ),
             endpoint_types=[apigw.EndpointType.REGIONAL],
-            cloud_watch_role=False,
+            cloud_watch_role=True,  # Changed to true to enable CloudWatch logs
         )
+        
+        # Method to remove the "CloudFormation Output" to avoid exposing the endpoint
+        self.api.node.try_remove_child("Endpoint")
         
         # Define REST-API resources
         root_resource_api = self.api.root.add_resource("api")
@@ -287,15 +313,160 @@ class CdkAgentsResourcesStack(Stack):
         root_resource_add_resource = root_resource_v1.add_resource("add_resource")
         root_resource_delete_resource = root_resource_v1.add_resource("delete_resource")
 
-        # Define all API-Lambda integrations for the API methods
-        root_resource_ask.add_method("POST", apigw.LambdaIntegration(self.ask_lambda))
-        root_resource_delete_history.add_method("POST", apigw.LambdaIntegration(self.delete_history_lambda))
-        root_resource_get_history.add_method("POST", apigw.LambdaIntegration(self.get_history_lambda))
-        root_resource_add_resource.add_method("POST", apigw.LambdaIntegration(self.add_resource_lambda))
-        root_resource_delete_resource.add_method("POST", apigw.LambdaIntegration(self.delete_resource_lambda))
+        # Configurar respuestas de método comunes para todos los endpoints
+        common_method_responses = [
+            apigw.MethodResponse(
+                status_code="200",
+                response_parameters={
+                    'method.response.header.Access-Control-Allow-Origin': True,
+                    'method.response.header.Access-Control-Allow-Headers': True,
+                    'method.response.header.Access-Control-Allow-Methods': True
+                }
+            ),
+            apigw.MethodResponse(
+                status_code="400",
+                response_parameters={
+                    'method.response.header.Access-Control-Allow-Origin': True,
+                    'method.response.header.Access-Control-Allow-Headers': True,
+                    'method.response.header.Access-Control-Allow-Methods': True
+                }
+            ),
+            apigw.MethodResponse(
+                status_code="500",
+                response_parameters={
+                    'method.response.header.Access-Control-Allow-Origin': True,
+                    'method.response.header.Access-Control-Allow-Headers': True,
+                    'method.response.header.Access-Control-Allow-Methods': True
+                }
+            )
+        ]
+        
+        # Configurar respuestas de integración comunes para todos los endpoints
+        common_integration_responses = [
+            apigw.IntegrationResponse(
+                status_code="200",
+                response_parameters={
+                    'method.response.header.Access-Control-Allow-Origin': "'*'",
+                    'method.response.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+                    'method.response.header.Access-Control-Allow-Methods': "'GET,POST,OPTIONS'"
+                }
+            ),
+            apigw.IntegrationResponse(
+                status_code="400",
+                selection_pattern="4\\d{2}",
+                response_parameters={
+                    'method.response.header.Access-Control-Allow-Origin': "'*'",
+                    'method.response.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+                    'method.response.header.Access-Control-Allow-Methods': "'GET,POST,OPTIONS'"
+                }
+            ),
+            apigw.IntegrationResponse(
+                status_code="500",
+                selection_pattern="5\\d{2}",
+                response_parameters={
+                    'method.response.header.Access-Control-Allow-Origin': "'*'",
+                    'method.response.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+                    'method.response.header.Access-Control-Allow-Methods': "'GET,POST,OPTIONS'"
+                }
+            )
+        ]
+
+        # Define all API-Lambda integrations with detailed configuration
+        api_lambda_integration_ask = apigw.LambdaIntegration(
+            self.ask_lambda,
+            proxy=True,
+            integration_responses=common_integration_responses
+        )
+        
+        api_lambda_integration_delete_history = apigw.LambdaIntegration(
+            self.delete_history_lambda,
+            proxy=True,
+            integration_responses=common_integration_responses
+        )
+        
+        api_lambda_integration_get_history = apigw.LambdaIntegration(
+            self.get_history_lambda,
+            proxy=True,
+            integration_responses=common_integration_responses
+        )
+        
+        api_lambda_integration_add_resource = apigw.LambdaIntegration(
+            self.add_resource_lambda,
+            proxy=True,
+            integration_responses=common_integration_responses
+        )
+        
+        api_lambda_integration_delete_resource = apigw.LambdaIntegration(
+            self.delete_resource_lambda,
+            proxy=True,
+            integration_responses=common_integration_responses
+        )
+        
+        # Add methods with the lambda integrations and configured responses
+        root_resource_ask.add_method(
+            "POST", 
+            api_lambda_integration_ask,
+            method_responses=common_method_responses
+        )
+        
+        root_resource_delete_history.add_method(
+            "POST", 
+            api_lambda_integration_delete_history,
+            method_responses=common_method_responses
+        )
+        
+        root_resource_get_history.add_method(
+            "POST", 
+            api_lambda_integration_get_history,
+            method_responses=common_method_responses
+        )
+        
+        root_resource_add_resource.add_method(
+            "POST", 
+            api_lambda_integration_add_resource,
+            method_responses=common_method_responses
+        )
+        
+        root_resource_delete_resource.add_method(
+            "POST", 
+            api_lambda_integration_delete_resource,
+            method_responses=common_method_responses
+        )
+        
+        # Add explicit permissions for API Gateway to invoke each Lambda function
+        self.ask_lambda.add_permission(
+            'ApiGatewayInvokeAsk',
+            principal=iam.ServicePrincipal('apigateway.amazonaws.com'),
+            source_arn=self.api.arn_for_execute_api()
+        )
+        
+        self.delete_history_lambda.add_permission(
+            'ApiGatewayInvokeDeleteHistory',
+            principal=iam.ServicePrincipal('apigateway.amazonaws.com'),
+            source_arn=self.api.arn_for_execute_api()
+        )
+        
+        self.get_history_lambda.add_permission(
+            'ApiGatewayInvokeGetHistory',
+            principal=iam.ServicePrincipal('apigateway.amazonaws.com'),
+            source_arn=self.api.arn_for_execute_api()
+        )
+        
+        self.add_resource_lambda.add_permission(
+            'ApiGatewayInvokeAddResource',
+            principal=iam.ServicePrincipal('apigateway.amazonaws.com'),
+            source_arn=self.api.arn_for_execute_api()
+        )
+        
+        self.delete_resource_lambda.add_permission(
+            'ApiGatewayInvokeDeleteResource',
+            principal=iam.ServicePrincipal('apigateway.amazonaws.com'),
+            source_arn=self.api.arn_for_execute_api()
+        )
         
         # Store the deployment stage for use in outputs
         self.deployment_stage = self.PROJECT_CONFIG.environment.value.lower()
+        
         
     def create_outputs(self):
         """Create CloudFormation outputs for important resources"""
