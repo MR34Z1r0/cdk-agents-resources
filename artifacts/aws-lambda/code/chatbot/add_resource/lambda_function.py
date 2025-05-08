@@ -4,6 +4,7 @@ import hashlib
 import requests
 import unicodedata
 import re
+import boto3
 from pathlib import Path
 from typing import Dict, Any, List
 from uuid import uuid4
@@ -14,31 +15,42 @@ from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
 from aje_libs.bd.helpers.pinecone_helper import PineconeHelper
 from aje_libs.documents.helpers.document_processor import DocumentProcessor
 from aje_libs.common.logger import custom_logger
+from aje_libs.common.helpers.secrets_helper import SecretsHelper
+from aje_libs.common.helpers.ssm_helper import SSMParameterHelper
 
 # Configuración
-FILES_TABLE_NAME = os.environ.get("FILES_TABLE_NAME", "db_learning_resources")
-HASH_TABLE_NAME = os.environ.get("HASH_TABLE_NAME", "db_learning_resources_hash")
-S3_BUCKET = os.environ.get("S3_BUCKET", "datalake-cls-509399624591-landing-s3-bucket")
-PINECONE_INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "")
-PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY", "")
-EMBEDDINGS_MODEL_ID = os.environ.get("EMBEDDINGS_MODEL_ID", "amazon.titan-embed-text-v2:0")
-EMBEDDINGS_REGION = os.environ.get("EMBEDDINGS_REGION", "us-west-2")
+ENVIRONMENT = os.environ["ENVIRONMENT"]
+PROJECT_NAME = os.environ["PROJECT_NAME"]
+OWNER = os.environ["OWNER"]
+DYNAMO_RESOURCES_TABLE = os.environ["DYNAMO_RESOURCES_TABLE"]
+DYNAMO_RESOURCES_HASH_TABLE = os.environ["DYNAMO_RESOURCES_HASH_TABLE"]
+S3_RESOURCES_BUCKET = os.environ["S3_RESOURCES_BUCKET"]
+
+# Parameter Store
+ssm_chatbot = SSMParameterHelper(f"/{ENVIRONMENT}/{PROJECT_NAME}/chatbot")
+PARAMETER_VALUE = json.loads(ssm_chatbot.get_parameter_value())
+
+EMBEDDINGS_MODEL_ID = PARAMETER_VALUE["EMBEDDINGS_MODEL_ID"]
+EMBEDDINGS_REGION = PARAMETER_VALUE["EMBEDDINGS_REGION"]
+# Secrets
+secret_pinecone = SecretsHelper(f"{ENVIRONMENT}/{PROJECT_NAME}/pinecone-api-key")
+
+PINECONE_INDEX_NAME = secret_pinecone.get_secret_value("PINECONE_INDEX_NAME")
+PINECONE_API_KEY = secret_pinecone.get_secret_value("PINECONE_API_KEY")
+
 DOWNLOAD_FOLDER = "/tmp/downloads"
 S3_PATH = "SOFIA_FILE/PLANIFICACION/AV_Recursos"
-
-OWNER = os.environ.get("OWNER")
-PROJECT_NAME = os.environ.get("PROJECT_NAME")
-
+ 
 logger = custom_logger(__name__, owner=OWNER, service=PROJECT_NAME)
 
 # Crear helper instances
-s3_helper = S3Helper(bucket_name=S3_BUCKET)
+s3_helper = S3Helper(bucket_name=S3_RESOURCES_BUCKET)
 files_table_helper = DynamoDBHelper(
-    table_name=FILES_TABLE_NAME,
+    table_name=DYNAMO_RESOURCES_TABLE,
     pk_name="resource_id"
 )
 hash_table_helper = DynamoDBHelper(
-    table_name=HASH_TABLE_NAME,
+    table_name=DYNAMO_RESOURCES_HASH_TABLE,
     pk_name="file_hash"
 )
 pinecone_helper = PineconeHelper(
@@ -67,44 +79,26 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         else:
             body = event
         
-        # Validar campos requeridos usando formato estandarizado
-        if "resourceId" not in body:
-            return {
+        # Validar que los campos necesarios estén presentes usando el formato estandarizado
+        required_fields = ["RecursoDidacticoId", "DriveId", "TituloRecurso", "SilaboEventoId"]
+        missing_fields = [field for field in required_fields if field not in body]
+        
+        if missing_fields:
+            logger.error(f"Campos requeridos faltantes: {missing_fields}")
+        
+        return {
                 "success": False,
-                "message": "Falta el campo resourceId",
+                "message": f"Campos requeridos faltantes: {missing_fields}",
                 "statusCode": 400,
                 "error": {
-                    "code": "MISSING_FIELD",
-                    "details": "El campo resourceId es obligatorio"
+                    "code": "MISSING_FIELDS",
+                    "details": f"Campos requeridos faltantes: {missing_fields}"
                 }
             }
         
-        if "content" not in body or not isinstance(body["content"], dict):
-            return {
-                "success": False,
-                "message": "Falta el campo content o no es un objeto",
-                "statusCode": 400,
-                "error": {
-                    "code": "INVALID_CONTENT",
-                    "details": "El campo content es obligatorio y debe ser un objeto"
-                }
-            }
-        
-        content = body["content"]
-        if "title" not in content or "driveId" not in content:
-            return {
-                "success": False,
-                "message": "Faltan campos obligatorios en content",
-                "statusCode": 400,
-                "error": {
-                    "code": "MISSING_CONTENT_FIELDS",
-                    "details": "Los campos title y driveId son obligatorios en content"
-                }
-            }
-        
-        resource_id = body["resourceId"]
-        title = content["title"]
-        drive_id = content["driveId"]
+        resource_id = body["RecursoDidacticoId"]
+        title = body["TituloRecurso"]
+        drive_id = body["DriveId"]
         
         # Procesar el recurso
         result = process_resource_addition(resource_id, title, drive_id)

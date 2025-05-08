@@ -7,29 +7,38 @@ from aje_libs.common.helpers.s3_helper import S3Helper
 from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
 from aje_libs.bd.helpers.pinecone_helper import PineconeHelper
 from aje_libs.common.logger import custom_logger
-
+from aje_libs.common.helpers.secrets_helper import SecretsHelper
+from aje_libs.common.helpers.ssm_helper import SSMParameterHelper
 # Configuración
-FILES_TABLE_NAME = os.environ.get("FILES_TABLE_NAME", "db_learning_resources")
-HASH_TABLE_NAME = os.environ.get("HASH_TABLE_NAME", "db_learning_resources_hash")
-S3_BUCKET = os.environ.get("S3_BUCKET", "datalake-cls-509399624591-landing-s3-bucket")
-PINECONE_INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "")
-PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY", "")
-EMBEDDINGS_MODEL_ID = os.environ.get("EMBEDDINGS_MODEL_ID", "amazon.titan-embed-text-v2:0")
-EMBEDDINGS_REGION = os.environ.get("EMBEDDINGS_REGION", "us-west-2")
+ENVIRONMENT = os.environ["ENVIRONMENT"]
+PROJECT_NAME = os.environ["PROJECT_NAME"]
+OWNER = os.environ["OWNER"]
+DYNAMO_RESOURCES_TABLE = os.environ["DYNAMO_RESOURCES_TABLE"]
+DYNAMO_RESOURCES_HASH_TABLE = os.environ["DYNAMO_RESOURCES_HASH_TABLE"]
+S3_RESOURCES_BUCKET = os.environ["S3_RESOURCES_BUCKET"]
 
-OWNER = os.environ.get("OWNER")
-PROJECT_NAME = os.environ.get("PROJECT_NAME")
+# Parameter Store
+ssm_chatbot = SSMParameterHelper(f"/{ENVIRONMENT}/{PROJECT_NAME}/chatbot")
+PARAMETER_VALUE = json.loads(ssm_chatbot.get_parameter_value())
+
+EMBEDDINGS_MODEL_ID = PARAMETER_VALUE["EMBEDDINGS_MODEL_ID"]
+EMBEDDINGS_REGION = PARAMETER_VALUE["EMBEDDINGS_REGION"]
+# Secrets
+secret_pinecone = SecretsHelper(f"{ENVIRONMENT}/{PROJECT_NAME}/pinecone-api-key")
+
+PINECONE_INDEX_NAME = secret_pinecone.get_secret_value("PINECONE_INDEX_NAME")
+PINECONE_API_KEY = secret_pinecone.get_secret_value("PINECONE_API_KEY")
 
 logger = custom_logger(__name__, owner=OWNER, service=PROJECT_NAME)
 
 # Crear helper instances
-s3_helper = S3Helper(bucket_name=S3_BUCKET)
+s3_helper = S3Helper(bucket_name=S3_RESOURCES_BUCKET)
 files_table_helper = DynamoDBHelper(
-    table_name=FILES_TABLE_NAME,
+    table_name=DYNAMO_RESOURCES_TABLE,
     pk_name="resource_id"
 )
 hash_table_helper = DynamoDBHelper(
-    table_name=HASH_TABLE_NAME,
+    table_name=DYNAMO_RESOURCES_HASH_TABLE,
     pk_name="file_hash"
 )
 pinecone_helper = PineconeHelper(
@@ -57,19 +66,23 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         else:
             body = event
         
-        # Validar campos requeridos usando formato estandarizado
-        if "resourceId" not in body:
+        # Validar que los campos necesarios estén presentes usando el formato estandarizado
+        required_fields = ["RecursoDidacticoId"]
+        missing_fields = [field for field in required_fields if field not in body]
+        
+        if missing_fields:
+            logger.error(f"Campos requeridos faltantes: {missing_fields}")
             return {
                 "success": False,
-                "message": "Falta el campo resourceId",
+                "message": f"Campos requeridos faltantes: {missing_fields}",
                 "statusCode": 400,
                 "error": {
-                    "code": "MISSING_FIELD",
-                    "details": "El campo resourceId es obligatorio"
+                    "code": "MISSING_FIELDS",
+                    "details": f"Campos requeridos faltantes: {missing_fields}"
                 }
             }
         
-        resource_id = body["resourceId"]
+        resource_id = body["RecursoDidacticoId"]
         
         # Procesar la eliminación del recurso
         result = process_resource_deletion(resource_id)
@@ -144,7 +157,7 @@ def process_resource_deletion(resource_id: str) -> Dict[str, Any]:
         if s3_path:
             try:
                 # Extraer la clave del objeto de la ruta S3
-                object_key = s3_path.replace(f"s3://{S3_BUCKET}/", "")
+                object_key = s3_path.replace(f"s3://{S3_RESOURCES_BUCKET}/", "")
                 if object_key:
                     s3_helper.delete_object(object_key)
                     logger.info(f"Objeto S3 eliminado exitosamente: {object_key}")
@@ -158,11 +171,11 @@ def process_resource_deletion(resource_id: str) -> Dict[str, Any]:
         try:
             if file_hash:
                 hash_table_helper.delete_item(file_hash)
-                deleted_tables.append(HASH_TABLE_NAME)
+                deleted_tables.append(DYNAMO_RESOURCES_HASH_TABLE)
                 logger.info(f"Registro eliminado de la tabla hash: {file_hash}")
             
             files_table_helper.delete_item(resource_id)
-            deleted_tables.append(FILES_TABLE_NAME)
+            deleted_tables.append(DYNAMO_RESOURCES_TABLE)
             logger.info(f"Registro eliminado de la tabla de recursos: {resource_id}")
             
             return {

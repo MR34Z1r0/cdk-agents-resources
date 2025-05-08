@@ -6,13 +6,18 @@ from aje_libs.common.logger import custom_logger
 from aje_libs.common.utils import DecimalEncoder
 import traceback
 from boto3.dynamodb.conditions import Attr
+from aje_libs.common.helpers.ssm_helper import SSMParameterHelper
+# Configuración
+ENVIRONMENT = os.environ["ENVIRONMENT"]
+PROJECT_NAME = os.environ["PROJECT_NAME"]
+OWNER = os.environ["OWNER"]
+DYNAMO_CHAT_HISTORY_TABLE = os.environ["DYNAMO_CHAT_HISTORY_TABLE"]
 
-# Configurar variables de entorno
-DYNAMO_CHAT_HISTORY_TABLE = os.environ.get("DYNAMO_CHAT_HISTORY_TABLE")
+# Parameter Store
+ssm_chatbot = SSMParameterHelper(f"/{ENVIRONMENT}/{PROJECT_NAME}/chatbot")
+PARAMETER_VALUE = json.loads(ssm_chatbot.get_parameter_value())
+
 HISTORY_CANT_ELEMENTS = int(os.environ.get("HISTORY_CANT_ELEMENTS", 5))
-
-OWNER = os.environ.get("OWNER")
-PROJECT_NAME = os.environ.get("PROJECT_NAME")
 
 logger = custom_logger(__name__, owner=OWNER, service=PROJECT_NAME)
   

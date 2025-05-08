@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import os
 import aws_cdk as cdk
+from stacks.cdk_agents_resources_stack import CdkAgentsResourcesStack
+from aje_cdk_libs.constants.environments import Environments
+from aje_cdk_libs.constants.project_config import ProjectConfig
 from dotenv import load_dotenv
-from stacks.agent_resources_stack import CdkAgentsResourcesStack
-from cdk_aje_libs.constants.environments import Environments
-from cdk_aje_libs.constants.project_config import ProjectConfig
 
 load_dotenv() 
 app = cdk.App()

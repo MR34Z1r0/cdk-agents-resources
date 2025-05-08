@@ -5,12 +5,12 @@ from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
 from aje_libs.common.logger import custom_logger
 import traceback
 from boto3.dynamodb.conditions import Attr
-
-# Configurar variables de entorno
-DYNAMO_CHAT_HISTORY_TABLE = os.environ.get("DYNAMO_CHAT_HISTORY_TABLE")
-
-OWNER = os.environ.get("OWNER")
-PROJECT_NAME = os.environ.get("PROJECT_NAME")
+from aje_libs.common.helpers.ssm_helper import SSMParameterHelper
+# Configuración
+ENVIRONMENT = os.environ["ENVIRONMENT"]
+PROJECT_NAME = os.environ["PROJECT_NAME"]
+OWNER = os.environ["OWNER"]
+DYNAMO_CHAT_HISTORY_TABLE = os.environ["DYNAMO_CHAT_HISTORY_TABLE"]
 
 logger = custom_logger(__name__, owner=OWNER, service=PROJECT_NAME)
 

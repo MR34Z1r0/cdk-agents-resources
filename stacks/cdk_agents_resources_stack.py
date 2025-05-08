@@ -17,31 +17,19 @@ from constructs import Construct
 from aje_cdk_libs.builders.resource_builder import ResourceBuilder
 from aje_cdk_libs.models.configs import *
 from aje_cdk_libs.constants.environments import Environments
+from constants.paths import Paths
+import os
+from dotenv import load_dotenv
+import urllib.parse
 from aje_cdk_libs.constants.project_config import ProjectConfig
 
 class CdkAgentsResourcesStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
-        super().__init__(scope, construct_id, **kwargs)
-        
-        # Load configuration
-        self.app_config = self.node.try_get_context("project_config")
-        if not self.app_config:
-            raise ValueError("Missing 'project_config' in context")
-        
-        # Create ProjectConfig instance
-        self.PROJECT_CONFIG = ProjectConfig.from_dict(self.app_config)
-        
-        # Initialize resource builder
+    def __init__(self, scope: Construct, construct_id: str, project_config: ProjectConfig, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)         
+        self.PROJECT_CONFIG = project_config        
         self.builder = ResourceBuilder(self, self.PROJECT_CONFIG)
-        
-        # Setup paths
-        self.LAMBDA_CODE_PATH = "artifacts/aws-lambda/code"
-        
-        # Import secrets
-        self.secret_bot = self.builder.import_secret(
-            f"{self.PROJECT_CONFIG.environment.value}/{self.PROJECT_CONFIG.project_name}/{self.PROJECT_CONFIG.app_config['secret_name']}"
-        )
-        
+        self.Paths = Paths(project_config.app_config)
+ 
         # Create all resources
         self.create_dynamodb_tables()
         self.create_s3_buckets()
@@ -107,100 +95,95 @@ class CdkAgentsResourcesStack(Stack):
             "LambdaPowertoolsLayer",
             layer_version_arn="arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV2:20"
         )
-        self.lambda_layer_aje_libs = _lambda.LayerVersion.from_layer_version_arn(
+        
+        self.lambda_layer_pinecone = _lambda.LayerVersion.from_layer_version_arn(
             self,
-            "LambdaPowertoolsLayer",
-            layer_version_arn="arn:aws:lambda:us-east-1:509399624591:layer:layer_aje_libs:1"
+            "LambdaPineconeLayer",
+            layer_version_arn="arn:aws:lambda:us-east-1:509399624591:layer:layer_pinecone:1"
         )
-        
-        
     
     def create_lambda_functions(self):
         """Create all Lambda functions needed for the chatbot"""
         
         # Common environment variables for all Lambda functions
         common_env_vars = {
-            "ENVIRONMENT": self.PROJECT_CONFIG.environment.value,
+            "ENVIRONMENT": self.PROJECT_CONFIG.environment.value.lower(),
+            "PROJECT_NAME": self.PROJECT_CONFIG.project_name,
+            "OWNER": self.PROJECT_CONFIG.author,
             "DYNAMO_CHAT_HISTORY_TABLE": self.chat_history_table.table_name,
             "DYNAMO_LIBRARY_TABLE": self.library_table.table_name,
             "DYNAMO_RESOURCES_TABLE": self.learning_resources_table.table_name,
             "DYNAMO_RESOURCES_HASH_TABLE": self.learning_resources_hash_table.table_name,
-            "S3_BUCKET": self.resources_bucket.bucket_name,
-            "PINECONE_API_KEY": "{{resolve:secretsmanager:" + self.secret_bot.secret_name + ":SecretString:PINECONE_API_KEY}}",
-            "PINECONE_INDEX_NAME": "{{resolve:secretsmanager:" + self.secret_bot.secret_name + ":SecretString:PINECONE_INDEX_NAME}}",
-            "EMBEDDINGS_MODEL_ID": "amazon.titan-embed-text-v2:0",
-            "BEDROCK_CHATBOT_MODEL_ID": "us.meta.llama3-2-3b-instruct-v1:0",
-            "BEDROCK_CHATBOT_REGION": "us-west-2",
-            "BEDROCK_CHATBOT_LLM_MAX_TOKENS": "512",
-            "HISTORY_CANT_ELEMENTS": "5",
-            "PINECONE_MAX_RETRIEVE_DOCUMENTS": "5",
-            "PINECONE_MIN_THRESHOLD": "0.75",
-            "OWNER": self.PROJECT_CONFIG.author,
-            "PROJECT_NAME": self.PROJECT_CONFIG.project_name
+            "S3_RESOURCES_BUCKET": self.resources_bucket.bucket_name
         }
         
         # Create ask Lambda function
+        function_name = "ask"
         lambda_config = LambdaConfig(
-            function_name="ask",
-            handler="lambda_function.lambda_handler",
-            code_path=f"{self.LAMBDA_CODE_PATH}/ask",
+            function_name=function_name,
+            handler=f"{function_name}/lambda_function.lambda_handler",
+            code_path=f"{self.Paths.LOCAL_ARTIFACTS_LAMBDA_CODE}/chatbot",
             runtime=_lambda.Runtime.PYTHON_3_11,
             memory_size=1024,
             timeout=Duration.seconds(60),
             environment=common_env_vars,
-            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs]
+            layers=[self.lambda_layer_powertools, self.lambda_layer_pinecone]
         )
         self.ask_lambda = self.builder.build_lambda_function(lambda_config)
         
         # Create delete_history Lambda function
+        function_name = "delete_history"
         lambda_config = LambdaConfig(
-            function_name="delete_history",
-            handler="lambda_function.lambda_handler",
-            code_path=f"{self.LAMBDA_CODE_PATH}/delete_history",
+            function_name=function_name,
+            handler=f"{function_name}/lambda_function.lambda_handler",
+            code_path=f"{self.Paths.LOCAL_ARTIFACTS_LAMBDA_CODE}/chatbot",
             runtime=_lambda.Runtime.PYTHON_3_11,
             memory_size=512,
             timeout=Duration.seconds(30),
             environment=common_env_vars,
-            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs]
+            layers=[self.lambda_layer_powertools]
         )
         self.delete_history_lambda = self.builder.build_lambda_function(lambda_config)
         
         # Create get_history Lambda function
+        function_name = "get_history"
         lambda_config = LambdaConfig(
-            function_name="get_history",
-            handler="lambda_function.lambda_handler",
-            code_path=f"{self.LAMBDA_CODE_PATH}/get_history",
+            function_name=function_name,
+            handler=f"{function_name}/lambda_function.lambda_handler",
+            code_path=f"{self.Paths.LOCAL_ARTIFACTS_LAMBDA_CODE}/chatbot",
             runtime=_lambda.Runtime.PYTHON_3_11,
             memory_size=512,
             timeout=Duration.seconds(30),
             environment=common_env_vars,
-            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs]
+            layers=[self.lambda_layer_powertools]
         )
         self.get_history_lambda = self.builder.build_lambda_function(lambda_config)
         
         # Create add_resource Lambda function
+        function_name = "add_resource"
         lambda_config = LambdaConfig(
-            function_name="add_resource",
-            handler="lambda_function.lambda_handler",
-            code_path=f"{self.LAMBDA_CODE_PATH}/add_resource",
+            function_name=function_name,
+            handler=f"{function_name}/lambda_function.lambda_handler",
+            code_path=f"{self.Paths.LOCAL_ARTIFACTS_LAMBDA_CODE}/chatbot",
             runtime=_lambda.Runtime.PYTHON_3_11,
             memory_size=1024,
             timeout=Duration.seconds(60),
             environment=common_env_vars,
-            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs]
+            layers=[self.lambda_layer_powertools, self.lambda_layer_pinecone]
         )
         self.add_resource_lambda = self.builder.build_lambda_function(lambda_config)
         
         # Create delete_resource Lambda function
+        function_name = "delete_resource"
         lambda_config = LambdaConfig(
-            function_name="delete_resource",
-            handler="lambda_function.lambda_handler",
-            code_path=f"{self.LAMBDA_CODE_PATH}/delete_resource",
+            function_name=function_name,
+            handler=f"{function_name}/lambda_function.lambda_handler",
+            code_path=f"{self.Paths.LOCAL_ARTIFACTS_LAMBDA_CODE}/chatbot",
             runtime=_lambda.Runtime.PYTHON_3_11,
             memory_size=512,
             timeout=Duration.seconds(30),
             environment=common_env_vars,
-            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs]
+            layers=[self.lambda_layer_powertools, self.lambda_layer_pinecone]
         )
         self.delete_resource_lambda = self.builder.build_lambda_function(lambda_config)
         
@@ -236,74 +219,62 @@ class CdkAgentsResourcesStack(Stack):
         self.add_resource_lambda.add_to_role_policy(bedrock_policy)
     
     def create_api_gateway(self):
-        """Create API Gateway for exposing Lambda functions"""
-        
-        # Create REST API
-        api_gateway_config = ApiGatewayConfig(
-            name="chatbot-api",
-            description="Chatbot API Gateway",
+        """
+        Method to create the REST-API Gateway for exposing the chatbot
+        functionalities.
+        """ 
+        # Create the API Gateway without specifying a default handler
+        self.api = apigw.RestApi(
+            self,
+            self.PROJECT_CONFIG.app_config['api_gw_name'],
+            description=f"REST API Gateway for {self.PROJECT_CONFIG.project_name} in {self.PROJECT_CONFIG.environment.value} environment",
+            deploy_options=apigw.StageOptions(
+                stage_name=self.PROJECT_CONFIG.environment.value.lower(),
+                description=f"REST API for {self.PROJECT_CONFIG.project_name}",
+                metrics_enabled=True,
+            ),    
+            default_cors_preflight_options=apigw.CorsOptions(
+                allow_origins=apigw.Cors.ALL_ORIGINS,
+                allow_methods=["GET", "POST"],
+                allow_headers=["*"],
+            ),
+            default_method_options=apigw.MethodOptions(
+                api_key_required=False,
+                authorization_type=apigw.AuthorizationType.NONE,
+            ),
             endpoint_types=[apigw.EndpointType.REGIONAL],
-        )
-        self.api = self.builder.build_api_gateway(api_gateway_config)
-        
-        # CORS configuration for all resources
-        cors_options = apigw.CorsOptions(
-            allow_origins=["*"],
-            allow_methods=["GET", "POST", "OPTIONS"],
-            allow_headers=["Content-Type", "Authorization"]
+            cloud_watch_role=False,
         )
         
-        # Create API resources and methods
-        ask_resource = self.api.root.add_resource("ask", default_cors_preflight_options=cors_options)
-        ask_resource.add_method("POST", apigw.LambdaIntegration(self.ask_lambda))
+        # Define REST-API resources
+        root_resource_api = self.api.root.add_resource("api")
+        root_resource_v1 = root_resource_api.add_resource("v1")
+
+        # Endpoints for the main functionalities
+        root_resource_ask = root_resource_v1.add_resource("ask") 
+        root_resource_delete_history = root_resource_v1.add_resource("delete_history")
+        root_resource_get_history = root_resource_v1.add_resource("get_history")
+        root_resource_add_resource = root_resource_v1.add_resource("add_resource")
+        root_resource_delete_resource = root_resource_v1.add_resource("delete_resource")
+
+        # Define all API-Lambda integrations for the API methods
+        root_resource_ask.add_method("POST", apigw.LambdaIntegration(self.ask_lambda))
+        root_resource_delete_history.add_method("POST", apigw.LambdaIntegration(self.delete_history_lambda))
+        root_resource_get_history.add_method("POST", apigw.LambdaIntegration(self.get_history_lambda))
+        root_resource_add_resource.add_method("POST", apigw.LambdaIntegration(self.add_resource_lambda))
+        root_resource_delete_resource.add_method("POST", apigw.LambdaIntegration(self.delete_resource_lambda))
         
-        history_resource = self.api.root.add_resource("history", default_cors_preflight_options=cors_options)
-        history_resource.add_method("POST", apigw.LambdaIntegration(self.get_history_lambda))
+        # Store the deployment stage for use in outputs
+        self.deployment_stage = self.PROJECT_CONFIG.environment.value
         
-        delete_history_resource = self.api.root.add_resource("delete-history", default_cors_preflight_options=cors_options)
-        delete_history_resource.add_method("POST", apigw.LambdaIntegration(self.delete_history_lambda))
-        
-        resources_resource = self.api.root.add_resource("resources", default_cors_preflight_options=cors_options)
-        add_resource = resources_resource.add_resource("add", default_cors_preflight_options=cors_options)
-        add_resource.add_method("POST", apigw.LambdaIntegration(self.add_resource_lambda))
-        
-        delete_resource = resources_resource.add_resource("delete", default_cors_preflight_options=cors_options)
-        delete_resource.add_method("POST", apigw.LambdaIntegration(self.delete_resource_lambda))
-        
-        # Create deployment and stage
-        deployment_config = ApiGatewayDeploymentConfig(
-            deployment_name="prod-deployment",
-            description="Production deployment",
-            api=self.api
-        )
-        deployment = self.builder.build_api_gateway_deployment(deployment_config)
-        
-        stage_config = ApiGatewayStageConfig(
-            stage_name="prod",
-            deployment=deployment,
-            logging_level="INFO",
-            data_trace_enabled=True
-        )
-        self.prod_stage = self.builder.build_api_gateway_stage(stage_config)
-    
     def create_outputs(self):
         """Create CloudFormation outputs for important resources"""
-        CfnOutput(self, "ApiGatewayUrl", 
-                 value=f"https://{self.api.rest_api_id}.execute-api.{self.region}.amazonaws.com/{self.prod_stage.stage_name}/",
-                 description="API Gateway URL")
-        
-        CfnOutput(self, "ChatHistoryTableName", 
-                 value=self.chat_history_table.table_name,
-                 description="Chat History DynamoDB Table")
-        
-        CfnOutput(self, "LibraryTableName", 
-                 value=self.library_table.table_name,
-                 description="Library DynamoDB Table")
-        
-        CfnOutput(self, "ResourcesTableName", 
-                 value=self.learning_resources_table.table_name,
-                 description="Learning Resources DynamoDB Table")
         
         CfnOutput(self, "ResourcesBucketName", 
-                 value=self.resources_bucket.bucket_name,
-                 description="Resources S3 Bucket")
+                value=self.resources_bucket.bucket_name,
+                description="Resources S3 Bucket")
+        
+        CfnOutput(self, "ApiGatewayUrl", 
+                value=f"https://{self.api.rest_api_id}.execute-api.{self.region}.amazonaws.com/{self.deployment_stage}/",
+                description="API Gateway URL")
+         

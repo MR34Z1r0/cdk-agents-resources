@@ -1,5 +1,5 @@
 import os
-from cdk_aje_libs.constants.project_config import ProjectConfig
+from aje_cdk_libs.constants.project_config import ProjectConfig
 
 class Paths:
     """Centralized path configurations for local and AWS assets"""

@@ -1,27 +1,36 @@
 import json
 import os
 import boto3
+from boto3.dynamodb.conditions import Key, Attr
 from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
 from aje_libs.bd.helpers.pinecone_helper import PineconeHelper
 from aje_libs.common.logger import custom_logger
+from aje_libs.common.helpers.secrets_helper import SecretsHelper
+from aje_libs.common.helpers.ssm_helper import SSMParameterHelper
 
-# Configuración de variables de entorno
-BEDROCK_CHATBOT_MODEL_ID = os.environ.get("BEDROCK_CHATBOT_MODEL_ID", "us.meta.llama3-2-3b-instruct-v1:0")
-BEDROCK_CHATBOT_REGION = os.environ.get("BEDROCK_CHATBOT_REGION", "us-west-2")
-BEDROCK_CHATBOT_LLM_MAX_TOKENS = int(os.environ.get("BEDROCK_CHATBOT_LLM_MAX_TOKENS", 1024))
-CHATBOT_HISTORY_ELEMENTS = int(os.environ.get("CHATBOT_HISTORY_ELEMENTS", 6))
+# Configuración
+ENVIRONMENT = os.environ["ENVIRONMENT"]
+PROJECT_NAME = os.environ["PROJECT_NAME"]
+OWNER = os.environ["OWNER"]
+DYNAMO_CHAT_HISTORY_TABLE = os.environ["DYNAMO_CHAT_HISTORY_TABLE"]
+DYNAMO_LIBRARY_TABLE = os.environ["DYNAMO_LIBRARY_TABLE"]
 
-# Environment variables for DynamoDB and Pinecone
-DYNAMO_CHAT_HISTORY_TABLE = os.environ.get("DYNAMO_CHAT_HISTORY_TABLE")
-DYNAMO_LIBRARY_TABLE = os.environ.get("DYNAMO_LIBRARY_TABLE")
-PINECONE_INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME")
-PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
-EMBEDDINGS_MODEL_ID = os.environ.get("EMBEDDINGS_MODEL_ID")
-PINECONE_MAX_RETRIEVE_DOCUMENTS = int(os.environ.get("PINECONE_MAX_RETRIEVE_DOCUMENTS", 6))
-PINECONE_MIN_THRESHOLD = float(os.environ.get("PINECONE_MIN_THRESHOLD", 0.5))
+# Parameter Store
+ssm_chatbot = SSMParameterHelper(f"/{ENVIRONMENT}/{PROJECT_NAME}/chatbot")
+PARAMETER_VALUE = json.loads(ssm_chatbot.get_parameter_value())
+CHATBOT_MODEL_ID = PARAMETER_VALUE["CHATBOT_MODEL_ID"]
+CHATBOT_REGION = PARAMETER_VALUE["CHATBOT_REGION"]
+CHATBOT_LLM_MAX_TOKENS = int(PARAMETER_VALUE["CHATBOT_LLM_MAX_TOKENS"])
+CHATBOT_HISTORY_ELEMENTS = int(PARAMETER_VALUE["CHATBOT_HISTORY_ELEMENTS"])
+PINECONE_MAX_RETRIEVE_DOCUMENTS = int(PARAMETER_VALUE["PINECONE_MAX_RETRIEVE_DOCUMENTS"])
+PINECONE_MIN_THRESHOLD = float(PARAMETER_VALUE["PINECONE_MIN_THRESHOLD"])
+EMBEDDINGS_MODEL_ID = PARAMETER_VALUE["EMBEDDINGS_MODEL_ID"]
+EMBEDDINGS_REGION = PARAMETER_VALUE["EMBEDDINGS_REGION"]
+# Secrets
+secret_pinecone = SecretsHelper(f"{ENVIRONMENT}/{PROJECT_NAME}/pinecone-api-key")
 
-OWNER = os.environ.get("OWNER")
-PROJECT_NAME = os.environ.get("PROJECT_NAME")
+PINECONE_INDEX_NAME = secret_pinecone.get_secret_value("PINECONE_INDEX_NAME")
+PINECONE_API_KEY = secret_pinecone.get_secret_value("PINECONE_API_KEY")
 
 logger = custom_logger(__name__, owner=OWNER, service=PROJECT_NAME)
 
@@ -41,14 +50,14 @@ pinecone_helper = PineconeHelper(
     index_name=PINECONE_INDEX_NAME,
     api_key=PINECONE_API_KEY,
     embeddings_model_id=EMBEDDINGS_MODEL_ID,
-    embeddings_region=BEDROCK_CHATBOT_REGION,
+    embeddings_region=CHATBOT_REGION,
     max_retrieve_documents=PINECONE_MAX_RETRIEVE_DOCUMENTS,
     min_threshold=PINECONE_MIN_THRESHOLD
 )
 
 bedrock_client = boto3.client(
     'bedrock-runtime',
-    region_name=BEDROCK_CHATBOT_REGION
+    region_name=CHATBOT_REGION
 )
 
 DATA_PROMPT = """  
@@ -87,7 +96,7 @@ DATA_PROMPT = """
 
 def bedrock_converse(client, prompt: str, max_tokens: int, temperature: float = 1) -> dict:
     return client.converse(
-        modelId=BEDROCK_CHATBOT_MODEL_ID,
+        modelId=CHATBOT_MODEL_ID,
         messages=[{"role": "user", "content": [{"text": prompt}]}],
         inferenceConfig={
             'maxTokens': max_tokens,
@@ -101,10 +110,17 @@ def get_message_history(alumno_id, silabo_id, cant_items=CHATBOT_HISTORY_ELEMENT
     Obtiene el historial de mensajes utilizando DynamoDBHelper.
     """
     try:
-        key_condition = f"ALUMNO_ID = '{alumno_id}'"
-        filter_expression = f"SILABUS_ID = '{silabo_id}' AND IS_DELETED = false"
+        # KeyConditionExpression solo puede usar claves de partición y sort
+        key_condition = Key("ALUMNO_ID").eq(alumno_id)
         
-        messages = dynamo_chat_history.scan_table(
+        # Filtro adicional que se aplica después de la condición de clave
+        filter_expression = (
+            Attr("SILABUS_ID").eq(silabo_id) &
+            Attr("IS_DELETED").eq(False)
+        )
+        
+        messages = dynamo_chat_history.query_table(
+            key_condition=key_condition,
             filter_expression=filter_expression,
             limit=cant_items
         )
@@ -273,7 +289,7 @@ def lambda_handler(event, context):
         response = bedrock_converse(
             bedrock_client,
             prompt,
-            BEDROCK_CHATBOT_LLM_MAX_TOKENS
+            CHATBOT_LLM_MAX_TOKENS
         )
         answer = response['output']['message']['content'][0]['text']
         

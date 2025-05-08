@@ -16,8 +16,8 @@
   },
   "context": {
     "project_config": {
-      "enterprise": "valorx",
-      "project_name": "agent-documents",
+      "enterprise": "sofia",
+      "project_name": "agent-resources",
       "project_description": "Example of chatbot with RAG support and integration with Bedrock, DynamoDB",
       "author": "Miguel Espinoza Alvarez",
       "email": "miguel.espinoza1388@gmail.com",
@@ -26,24 +26,24 @@
         "dev": {
           "artifacts": {
             "local": "./artifacts",
-            "aws_bucket": "artifacts-s3",
-            "aws_path": "sofia"
+            "aws_bucket": "artifacts",
+            "aws_path": "crm"
           },
           "log_level": "DEBUG",
-          "api_gw_name": "agent-documents",
-          "secret_name": "agent-documents",
+          "api_gw_name": "agent-resources",
+          "secret_name": "pinecone-api-key",
           "comment": "Example of chatbot with RAG support and integration with Bedrock, DynamoDB",
           "meta_endpoint": "https://graph.facebook.com/"
         },
         "prod": {
           "artifacts": {
             "local": "./artifacts",
-            "aws_bucket": "artifacts-s3",
-            "aws_path": "sofia"
+            "aws_bucket": "artifacts",
+            "aws_path": "crm"
           },
           "log_level": "DEBUG",
-          "api_gw_name": "agent-documents",
-          "secret_name": "agent-documents",        
+          "api_gw_name": "agent-resources",
+          "secret_name": "pinecone-api-key",  
           "comment": "Example of chatbot with RAG support and integration with Bedrock, mDynamoDB",
           "meta_endpoint": "https://graph.facebook.com/"
         }
