@@ -189,7 +189,7 @@ class CdkAgentsResourcesStack(Stack):
         
         # Grant permissions
         self.resources_bucket.grant_read_write(self.add_resource_lambda)
-        self.resources_bucket.grant_read_write(self.delete_resource_lambda)
+        self.resources_bucket.grant_read_write(self.delete_resource_lambda)         
         
         self.chat_history_table.grant_read_write_data(self.ask_lambda)
         self.chat_history_table.grant_read_write_data(self.delete_history_lambda)
@@ -215,9 +215,39 @@ class CdkAgentsResourcesStack(Stack):
             resources=["*"]
         )
         
+        # Grant Bedrock permissions to Lambda functions
+        ssm_policy = iam.PolicyStatement(
+            effect=iam.Effect.ALLOW,
+            actions=[
+                "ssm:GetParameter",
+                "ssm:GetParameters"
+            ],
+            resources=["*"]
+        )
+        
+        secrets_policy = iam.PolicyStatement(
+            effect=iam.Effect.ALLOW,
+            actions=[
+                "secretsmanager:GetSecretValue"                
+            ],
+            resources=["*"]
+        )
+        
         self.ask_lambda.add_to_role_policy(bedrock_policy)
         self.add_resource_lambda.add_to_role_policy(bedrock_policy)
-    
+        
+        self.ask_lambda.add_to_role_policy(ssm_policy)
+        self.add_resource_lambda.add_to_role_policy(ssm_policy)
+        self.delete_resource_lambda.add_to_role_policy(ssm_policy)
+        self.get_history_lambda.add_to_role_policy(ssm_policy)
+        self.delete_history_lambda.add_to_role_policy(ssm_policy) 
+
+        self.ask_lambda.add_to_role_policy(secrets_policy)
+        self.add_resource_lambda.add_to_role_policy(secrets_policy)
+        self.delete_resource_lambda.add_to_role_policy(secrets_policy)
+        self.get_history_lambda.add_to_role_policy(secrets_policy)
+        self.delete_history_lambda.add_to_role_policy(secrets_policy) 
+        
     def create_api_gateway(self):
         """
         Method to create the REST-API Gateway for exposing the chatbot
@@ -265,7 +295,7 @@ class CdkAgentsResourcesStack(Stack):
         root_resource_delete_resource.add_method("POST", apigw.LambdaIntegration(self.delete_resource_lambda))
         
         # Store the deployment stage for use in outputs
-        self.deployment_stage = self.PROJECT_CONFIG.environment.value
+        self.deployment_stage = self.PROJECT_CONFIG.environment.value.lower()
         
     def create_outputs(self):
         """Create CloudFormation outputs for important resources"""
