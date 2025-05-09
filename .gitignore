@@ -11,3 +11,4 @@ cdk.out
 cdk.json
 
 .env
+*.env
