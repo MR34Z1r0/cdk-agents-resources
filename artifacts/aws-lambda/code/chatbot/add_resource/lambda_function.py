@@ -84,15 +84,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         missing_fields = [field for field in required_fields if field not in body]
         
         if missing_fields:
-            logger.error(f"Campos requeridos faltantes: {missing_fields}")
-        
-        return {
-            "statusCode": 400,
-            "body": json.dumps({
-                "success": False,
-                "message": f"Campos requeridos faltantes: {missing_fields}"
-                })
-            }
+            logger.error(f"Campos requeridos faltantes: {missing_fields}")        
+            return {
+                "statusCode": 400,
+                "body": json.dumps({
+                    "success": False,
+                    "message": f"Campos requeridos faltantes: {missing_fields}"
+                    })
+                }
         
         resource_id = body["RecursoDidacticoId"]
         title = body["TituloRecurso"]

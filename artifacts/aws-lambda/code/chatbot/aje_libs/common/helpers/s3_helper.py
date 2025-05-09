@@ -787,7 +787,7 @@ class S3Helper:
         filtered_objects = []
         for obj in all_objects:
             # Apply filters
-            if not _apply_object_filters(obj, filters):
+            if not self._apply_object_filters(obj, filters):
                 continue
             filtered_objects.append(obj)
         

@@ -95,19 +95,31 @@ class CdkAgentsResourcesStack(Stack):
             self.lambda_layer_powertools = _lambda.LayerVersion.from_layer_version_arn(
                 self,
                 "LambdaPowertoolsLayer",
-                layer_version_arn=f"arn:aws:lambda:{self.region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python313-x86_64:11"
+                layer_version_arn=f"arn:aws:lambda:{self.region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python313-x86_64:78"
             ) 
         else:
             self.lambda_layer_powertools = _lambda.LayerVersion.from_layer_version_arn(
                 self,
                 "LambdaPowertoolsLayer",
-                layer_version_arn=f"arn:aws:lambda:{self.region}:017000801446:layer:AWSLambdaPowertoolsPythonV2:20"
+                layer_version_arn=f"arn:aws:lambda:{self.region}:017000801446:layer:AWSLambdaPowertoolsPythonV2:78"
             )
         
         self.lambda_layer_pinecone = _lambda.LayerVersion.from_layer_version_arn(
             self,
             "LambdaPineconeLayer",
             layer_version_arn=f"arn:aws:lambda:{self.region}:{self.account}:layer:layer_pinecone:1"
+        )
+        
+        self.lambda_layer_docs = _lambda.LayerVersion.from_layer_version_arn(
+            self,
+            "LambdaDocsLayer",
+            layer_version_arn=f"arn:aws:lambda:{self.region}:{self.account}:layer:layer_docs:4"
+        )
+        
+        self.lambda_layer_requests = _lambda.LayerVersion.from_layer_version_arn(
+            self,
+            "LambdaRequestsLayer",
+            layer_version_arn=f"arn:aws:lambda:{self.region}:{self.account}:layer:layer_requests:2"
         )
     
     def create_lambda_functions(self):
@@ -177,7 +189,7 @@ class CdkAgentsResourcesStack(Stack):
             memory_size=1024,
             timeout=Duration.seconds(60),
             environment=common_env_vars,
-            layers=[self.lambda_layer_powertools, self.lambda_layer_pinecone]
+            layers=[self.lambda_layer_powertools, self.lambda_layer_pinecone, self.lambda_layer_docs, self.lambda_layer_requests]
         )
         self.add_resource_lambda = self.builder.build_lambda_function(lambda_config)
         

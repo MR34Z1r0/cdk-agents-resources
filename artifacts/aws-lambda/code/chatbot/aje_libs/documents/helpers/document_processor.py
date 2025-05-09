@@ -1,22 +1,11 @@
-# src/aje_libs/bd/helpers/document_processor.py
 import os
 from typing import Dict, List, Optional, Union
-from .pdf_helper import PDFHelper
-from .ppt_helper import PPTXHelper
-from .doc_helper import DOCXHelper
-from .xls_helper import ExcelHelper
 from ...common.logger import custom_logger
 
 logger = custom_logger(__name__)
 
 class DocumentProcessor:
     """Procesador de documentos que utiliza los helpers específicos"""
-    
-    def __init__(self):
-        self.pdf_helper = PDFHelper()
-        self.pptx_helper = PPTXHelper()
-        self.docx_helper = DOCXHelper()
-        self.excel_helper = ExcelHelper()
     
     def process_document(self, file_path: str) -> Optional[str]:
         """
@@ -29,12 +18,20 @@ class DocumentProcessor:
         
         try:
             if file_extension == 'pdf':
+                from .pdf_helper import PDFHelper
+                self.pdf_helper = PDFHelper()
                 return self.pdf_helper.extract_text(file_path)
-            elif file_extension == 'pptx':
+            elif file_extension == 'pptx' or file_extension == 'ppt':
+                from .ppt_helper import PPTXHelper
+                self.pptx_helper = PPTXHelper()
                 return self.pptx_helper.extract_text(file_path)
-            elif file_extension == 'docx':
+            elif file_extension == 'docx' or file_extension == 'doc':
+                from .doc_helper import DOCXHelper
+                self.docx_helper = DOCXHelper()
                 return self.docx_helper.extract_text(file_path)
-            elif file_extension == 'xlsx':
+            elif file_extension == 'xlsx' or file_extension == 'xls':
+                from .xls_helper import ExcelHelper
+                self.excel_helper = ExcelHelper()
                 return self.process_excel_to_text(file_path)
             else:
                 logger.warning(f"Formato no soportado: {file_extension}")
