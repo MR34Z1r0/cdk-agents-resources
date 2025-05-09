@@ -303,27 +303,23 @@ def lambda_handler(event, context):
         )
         
         # Retornar respuesta en formato estandarizado
-        return {
-            "success": True,
-            "message": "Respuesta generada correctamente",
+        return {            
             "statusCode": 200,
-            "data": {
+            "body": json.dumps({
+                "success": True,
+                "message": "Respuesta generada correctamente",
                 "answer": answer,
                 "inputTokens": response['usage']['inputTokens'],
                 "outputTokens": response['usage']['outputTokens']
-            }
+            })
         }
         
     except Exception as e:
         logger.error(f"Error en la función Lambda: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
         return {
-            "success": False,
-            "message": "Ocurrió un error procesando tu solicitud",
             "statusCode": 500,
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "details": str(e)
-            }
+            "body": json.dumps({
+                "success": False,
+                "message": str(e)
+            })
         }

@@ -4,7 +4,6 @@ import boto3
 from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
 from aje_libs.common.logger import custom_logger
 from aje_libs.common.utils import DecimalEncoder
-import traceback
 from boto3.dynamodb.conditions import Attr
 from aje_libs.common.helpers.ssm_helper import SSMParameterHelper
 # Configuración
@@ -49,14 +48,12 @@ def lambda_handler(event, context):
         if missing_fields:
             logger.error(f"Campos requeridos faltantes: {missing_fields}")
             return {
-                "success": False,
-                "message": f"Campos requeridos faltantes: {missing_fields}",
                 "statusCode": 400,
-                "error": {
-                    "code": "MISSING_FIELDS",
-                    "details": f"Campos requeridos faltantes: {missing_fields}"
+                "body": json.dumps({
+                    "success": False,
+                    "message": f"Campos requeridos faltantes: {missing_fields}"
+                    })
                 }
-            }
         
         user_id = body["userId"]
         syllabus_event_id = body["syllabusEventId"]
@@ -95,25 +92,23 @@ def lambda_handler(event, context):
         
         logger.info(f"Historial obtenido exitosamente: {len(formatted_history)} mensajes")
         
-        return {
-            "success": True,
-            "message": "Historial obtenido exitosamente",
-            "statusCode": 200,
-            "data": {
-                "history": formatted_history
+        return {            
+                "statusCode": 200,
+                "body": json.dumps({
+                    "success": True,
+                    "message": "Historial obtenido exitosamente",
+                    "data": {
+                    "history": formatted_history
+                    }
+                })
             }
-        }
         
     except Exception as e:
         logger.error(f"Error en get_history: {str(e)}")
-        logger.error(traceback.format_exc())
-        
         return {
-            "success": False,
-            "message": "Error al obtener historial",
             "statusCode": 500,
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "details": str(e)
-            }
+            "body": json.dumps({
+                "success": False,
+                "message": str(e)
+            })
         }

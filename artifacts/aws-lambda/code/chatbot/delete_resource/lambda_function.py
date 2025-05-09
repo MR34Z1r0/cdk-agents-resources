@@ -73,14 +73,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if missing_fields:
             logger.error(f"Campos requeridos faltantes: {missing_fields}")
             return {
-                "success": False,
-                "message": f"Campos requeridos faltantes: {missing_fields}",
                 "statusCode": 400,
-                "error": {
-                    "code": "MISSING_FIELDS",
-                    "details": f"Campos requeridos faltantes: {missing_fields}"
+                "body": json.dumps({
+                    "success": False,
+                    "message": f"Campos requeridos faltantes: {missing_fields}"
+                    })
                 }
-            }
         
         resource_id = body["RecursoDidacticoId"]
         
@@ -88,37 +86,34 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         result = process_resource_deletion(resource_id)
         
         if result["success"]:
-            return {
-                "success": True,
-                "message": result["message"],
+            return {            
                 "statusCode": 200,
-                "data": {
+                "body": json.dumps({
+                    "success": True,
+                    "data": {
                     "resourceId": resource_id,
                     "details": result.get("details", {})
-                }
+                    }
+                })
             }
         else:
             status_code = 404 if "no existe" in result.get("message", "").lower() else 500
             return {
+            "statusCode": status_code,
+            "body": json.dumps({
                 "success": False,
-                "message": result["message"],
-                "statusCode": status_code,
-                "error": {
-                    "code": "RESOURCE_DELETION_FAILED",
-                    "details": result["message"]
-                }
+                "message": result["message"]
+                })
             }
         
     except Exception as e:
         logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
         return {
-            "success": False,
-            "message": "Error interno del servidor",
             "statusCode": 500,
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "details": str(e)
-            }
+            "body": json.dumps({
+                "success": False,
+                "message": str(e)
+            })
         }
 
 def process_resource_deletion(resource_id: str) -> Dict[str, Any]:

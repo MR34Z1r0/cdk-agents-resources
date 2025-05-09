@@ -2,8 +2,7 @@ import json
 import os
 import boto3
 from aje_libs.common.helpers.dynamodb_helper import DynamoDBHelper
-from aje_libs.common.logger import custom_logger
-import traceback
+from aje_libs.common.logger import custom_logger 
 from boto3.dynamodb.conditions import Attr
 from aje_libs.common.helpers.ssm_helper import SSMParameterHelper
 # Configuración
@@ -42,13 +41,11 @@ def lambda_handler(event, context):
         if missing_fields:
             logger.error(f"Campos requeridos faltantes: {missing_fields}")
             return {
+            "statusCode": 400,
+            "body": json.dumps({
                 "success": False,
-                "message": f"Campos requeridos faltantes: {missing_fields}",
-                "statusCode": 400,
-                "error": {
-                    "code": "MISSING_FIELDS",
-                    "details": f"Campos requeridos faltantes: {missing_fields}"
-                }
+                "message": f"Campos requeridos faltantes: {missing_fields}"
+                })
             }
         
         user_id = body["userId"]
@@ -95,25 +92,22 @@ def lambda_handler(event, context):
         
         logger.info(f"Se marcaron {deleted_count} items como eliminados exitosamente")
         
-        return {
-            "success": True,
-            "message": f"Historial eliminado exitosamente",
-            "statusCode": 200,
-            "data": {
-                "deletedCount": deleted_count
+        return {            
+                "statusCode": 200,
+                "body": json.dumps({
+                    "success": True,
+                    "data": {
+                    "deletedCount": deleted_count
+                    }
+                })
             }
-        }
         
     except Exception as e:
         logger.error(f"Error en delete_history: {str(e)}")
-        logger.error(traceback.format_exc())
-        
         return {
-            "success": False,
-            "message": "Error al eliminar historial",
             "statusCode": 500,
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "details": str(e)
-            }
+            "body": json.dumps({
+                "success": False,
+                "message": str(e)
+            })
         }
