@@ -27,7 +27,15 @@
           "artifacts": {
             "local": "./artifacts",
             "aws_bucket": "artifacts",
-            "aws_path": "crm"
+            "aws_path": "crm",
+            "aws_lambda_layers": { 
+                "layer_aje_libs" : "arn:aws:lambda:${region}:${account}:layer:layer_aje_libs:3",
+                "layer_docs" : "arn:aws:lambda:${region}:${account}:layer:layer_docs:4",
+                "layer_requests" : "arn:aws:lambda:${region}:${account}:layer:layer_requests:2",
+                "layer_pinecone" : "arn:aws:lambda:${region}:${account}:layer:layer_pinecone:1",
+                "layer_langchain" : "arn:aws:lambda:${region}:${account}:layer:layer_langchain:1",
+                "layer_powertools" : "arn:aws:lambda:${region}:017000801446:layer:AWSLambdaPowertoolsPythonV2:78"
+            }
           },
           "log_level": "DEBUG",
           "api_gw_name": "agent-resources",
@@ -39,7 +47,15 @@
           "artifacts": {
             "local": "./artifacts",
             "aws_bucket": "artifacts",
-            "aws_path": "crm"
+            "aws_path": "crm",
+            "aws_lambda_layers": {
+                "layer_aje_libs" : "arn:aws:lambda:${region}:${account}:layer:layer_aje_libs:3",
+                "layer_docs" : "arn:aws:lambda:${region}:${account}:layer:layer_docs:4",
+                "layer_requests" : "arn:aws:lambda:${region}:${account}:layer:layer_requests:2",
+                "layer_pinecone" : "arn:aws:lambda:${region}:${account}:layer:layer_pinecone:1",
+                "layer_langchain" : "arn:aws:lambda:${region}:${account}:layer:layer_langchain:1",
+                "layer_powertools" : "arn:aws:lambda:${region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python313-x86_64:78"
+            }
           },
           "log_level": "DEBUG",
           "api_gw_name": "agent-resources",

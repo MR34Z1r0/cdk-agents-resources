@@ -18,6 +18,7 @@ from aje_cdk_libs.builders.resource_builder import ResourceBuilder
 from aje_cdk_libs.models.configs import *
 from aje_cdk_libs.constants.environments import Environments
 from constants.paths import Paths
+from constants.layers import Layers
 import os
 from dotenv import load_dotenv
 import urllib.parse
@@ -28,7 +29,8 @@ class CdkAgentsResourcesStack(Stack):
         super().__init__(scope, construct_id, **kwargs)         
         self.PROJECT_CONFIG = project_config        
         self.builder = ResourceBuilder(self, self.PROJECT_CONFIG)
-        self.Paths = Paths(project_config.app_config)
+        self.Paths = Paths(self.PROJECT_CONFIG.app_config)
+        self.Layers = Layers(self.PROJECT_CONFIG.app_config, project_config.region_name, project_config.account_id)
  
         # Create all resources
         self.create_dynamodb_tables()
@@ -90,36 +92,34 @@ class CdkAgentsResourcesStack(Stack):
     
     def create_lambda_layers(self):
         """Create or reference required Lambda layers"""
-        self.lambda_layer_powertools = None
-        if self.region == "us-east-2":
-            self.lambda_layer_powertools = _lambda.LayerVersion.from_layer_version_arn(
-                self,
-                "LambdaPowertoolsLayer",
-                layer_version_arn=f"arn:aws:lambda:{self.region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python313-x86_64:78"
-            ) 
-        else:
-            self.lambda_layer_powertools = _lambda.LayerVersion.from_layer_version_arn(
-                self,
-                "LambdaPowertoolsLayer",
-                layer_version_arn=f"arn:aws:lambda:{self.region}:017000801446:layer:AWSLambdaPowertoolsPythonV2:78"
-            )
+        self.lambda_layer_powertools = _lambda.LayerVersion.from_layer_version_arn(
+            self,
+            "LambdaPowertoolsLayer",
+            layer_version_arn=self.Layers.AWS_LAMBDA_LAYERS.get("layer_powertools")
+        )
+        
+        self.lambda_layer_aje_libs = _lambda.LayerVersion.from_layer_version_arn(
+            self,
+            "LambdaAjeLibsLayer",
+            layer_version_arn=self.Layers.AWS_LAMBDA_LAYERS.get("layer_aje_libs")
+        )
         
         self.lambda_layer_pinecone = _lambda.LayerVersion.from_layer_version_arn(
             self,
             "LambdaPineconeLayer",
-            layer_version_arn=f"arn:aws:lambda:{self.region}:{self.account}:layer:layer_pinecone:1"
+            layer_version_arn=self.Layers.AWS_LAMBDA_LAYERS.get("layer_pinecone")
         )
         
         self.lambda_layer_docs = _lambda.LayerVersion.from_layer_version_arn(
             self,
             "LambdaDocsLayer",
-            layer_version_arn=f"arn:aws:lambda:{self.region}:{self.account}:layer:layer_docs:4"
+            layer_version_arn=self.Layers.AWS_LAMBDA_LAYERS.get("layer_docs")
         )
         
         self.lambda_layer_requests = _lambda.LayerVersion.from_layer_version_arn(
             self,
             "LambdaRequestsLayer",
-            layer_version_arn=f"arn:aws:lambda:{self.region}:{self.account}:layer:layer_requests:2"
+            layer_version_arn=self.Layers.AWS_LAMBDA_LAYERS.get("layer_requests")
         )
     
     def create_lambda_functions(self):
@@ -147,7 +147,7 @@ class CdkAgentsResourcesStack(Stack):
             memory_size=1024,
             timeout=Duration.seconds(60),
             environment=common_env_vars,
-            layers=[self.lambda_layer_powertools, self.lambda_layer_pinecone]
+            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs, self.lambda_layer_pinecone]
         )
         self.ask_lambda = self.builder.build_lambda_function(lambda_config)
         
@@ -161,7 +161,7 @@ class CdkAgentsResourcesStack(Stack):
             memory_size=512,
             timeout=Duration.seconds(30),
             environment=common_env_vars,
-            layers=[self.lambda_layer_powertools]
+            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs]
         )
         self.delete_history_lambda = self.builder.build_lambda_function(lambda_config)
         
@@ -175,7 +175,7 @@ class CdkAgentsResourcesStack(Stack):
             memory_size=512,
             timeout=Duration.seconds(30),
             environment=common_env_vars,
-            layers=[self.lambda_layer_powertools]
+            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs]
         )
         self.get_history_lambda = self.builder.build_lambda_function(lambda_config)
         
@@ -189,7 +189,7 @@ class CdkAgentsResourcesStack(Stack):
             memory_size=1024,
             timeout=Duration.seconds(60),
             environment=common_env_vars,
-            layers=[self.lambda_layer_powertools, self.lambda_layer_pinecone, self.lambda_layer_docs, self.lambda_layer_requests]
+            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs, self.lambda_layer_pinecone, self.lambda_layer_docs, self.lambda_layer_requests]
         )
         self.add_resource_lambda = self.builder.build_lambda_function(lambda_config)
         
@@ -203,7 +203,7 @@ class CdkAgentsResourcesStack(Stack):
             memory_size=512,
             timeout=Duration.seconds(30),
             environment=common_env_vars,
-            layers=[self.lambda_layer_powertools, self.lambda_layer_pinecone]
+            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs, self.lambda_layer_pinecone]
         )
         self.delete_resource_lambda = self.builder.build_lambda_function(lambda_config)
         
