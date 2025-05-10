@@ -7,6 +7,7 @@ from aje_libs.bd.helpers.pinecone_helper import PineconeHelper
 from aje_libs.common.logger import custom_logger
 from aje_libs.common.helpers.secrets_helper import SecretsHelper
 from aje_libs.common.helpers.ssm_helper import SSMParameterHelper
+from aje_libs.common.helpers.bedrock_helper import BedrockHelper
 
 # Configuración
 ENVIRONMENT = os.environ["ENVIRONMENT"]
@@ -55,10 +56,8 @@ pinecone_helper = PineconeHelper(
     min_threshold=PINECONE_MIN_THRESHOLD
 )
 
-bedrock_client = boto3.client(
-    'bedrock-runtime',
-    region_name=CHATBOT_REGION
-)
+# Inicializar el BedrockHelper en lugar de usar boto3 directamente
+bedrock_helper = BedrockHelper(region_name=CHATBOT_REGION)
 
 DATA_PROMPT = """  
     ### Configuración del Chatbot "{asistente_nombre}"
@@ -94,16 +93,28 @@ DATA_PROMPT = """
     ###Hola {usuario_nombre}, soy {asistente_nombre}, tu guía en {curso}. ¿En qué puedo ayudarte hoy en relación con {curso}?
     """
 
-def bedrock_converse(client, prompt: str, max_tokens: int, temperature: float = 1) -> dict:
-    return client.converse(
-        modelId=CHATBOT_MODEL_ID,
-        messages=[{"role": "user", "content": [{"text": prompt}]}],
-        inferenceConfig={
-            'maxTokens': max_tokens,
-            'temperature': temperature,
-            'topP': 0.2
-        }
+def bedrock_converse(prompt: str, max_tokens: int, temperature: float = 1) -> dict:
+    """
+    Utiliza BedrockHelper para conversar en lugar de usar el cliente directamente.
+    """
+    # Usamos el método converse del BedrockHelper
+    parameters = {
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p": 0.2
+    }
+    
+    # Crear la estructura de mensajes para la conversación
+    messages = [{"role": "user", "content": [{"text": prompt}]}]
+    
+    # Usamos el método converse del BedrockHelper
+    response = bedrock_helper.converse(
+        model=CHATBOT_MODEL_ID,
+        messages=messages,
+        parameters=parameters
     )
+    
+    return response
 
 def get_message_history(alumno_id, silabo_id, cant_items=CHATBOT_HISTORY_ELEMENTS):
     """
@@ -221,7 +232,7 @@ def lambda_handler(event, context):
             body = event
         
         # Validar que los campos necesarios estén presentes usando el formato estandarizado
-        required_fields = ["userId", "syllabusEventId", "message"]
+        required_fields = ["user_id", "syllabus_event_id", "message"]
         missing_fields = [field for field in required_fields if field not in body]
         
         if missing_fields:
@@ -237,17 +248,18 @@ def lambda_handler(event, context):
             }
         
         # Extraer datos del payload estandarizado
-        user_id = body["userId"]
-        syllabus_event_id = body["syllabusEventId"]
+        user_id = body["user_id"]
+        syllabus_event_id = body["syllabus_event_id"]
         message_text = body["message"]
+        asistente_nombre = body["asistente_nombre"]
+        usuario_nombre = body["usuario_nombre"]
+        usuario_rol = body["usuario_rol"]
+        institucion = body["institucion"]
+        curso = body["curso"]
         
-        # Extraer metadatos (opcionales)
-        metadata = body.get("metadata", {})
-        asistente_nombre = metadata.get("assistantName", "Asistente")
-        usuario_nombre = metadata.get("userName", "Estudiante")
-        usuario_rol = metadata.get("userRole", "Estudiante")
-        institucion = metadata.get("institution", "Universidad")
-        curso = metadata.get("course", "Curso")
+        # Obtener historial de conversación
+        # Busca los messages de ese syllabus_event_id y user_id
+        logger.info(f"Buscando historial de conversación para syllabus_event_id: {syllabus_event_id} y user_id: {user_id}")
         
         # Obtener historial de conversación
         chat_history = get_message_history(
@@ -256,13 +268,14 @@ def lambda_handler(event, context):
             cant_items=CHATBOT_HISTORY_ELEMENTS
         )
         
+        formatted_history = "No hay historial previo"
         if chat_history:
             formatted_history = "Historial de conversación:\n" + "\n".join(
                 [f"{i + 1}. user: {h['USER_MESSAGE']}\n   assistant: {h['AI_MESSAGE']}" 
                 for i, h in enumerate(chat_history)]
             )
-        else:
-            formatted_history = "No hay historial previo"
+            
+        logger.info(f"formatted_history: {formatted_history}")
  
         # Obtener contexto
         # Busca los resources de ese syllabus_event_id
@@ -283,15 +296,21 @@ def lambda_handler(event, context):
             bd_context=pinecone_context,
             question=message_text
         )
+        logger.info(f"prompt: {prompt}")
 
-        # Generar respuesta
+        # Generar respuesta usando el BedrockHelper
         logger.info("Generando respuesta con Bedrock")
         response = bedrock_converse(
-            bedrock_client,
             prompt,
-            CHATBOT_LLM_MAX_TOKENS
+            CHATBOT_LLM_MAX_TOKENS,
+            temperature=1.0
         )
-        answer = response['output']['message']['content'][0]['text']
+        
+        # Extraer la respuesta del modelo según la estructura de respuesta de BedrockHelper
+        # Nos adaptamos a la estructura de respuesta que devuelve el helper
+        answer = response.get("text", "")
+        input_tokens = response.get("input_tokens", 0)
+        output_tokens = response.get("output_tokens", 0)
         
         # Guardar en historial
         upload_message(
@@ -309,8 +328,8 @@ def lambda_handler(event, context):
                 "success": True,
                 "message": "Respuesta generada correctamente",
                 "answer": answer,
-                "inputTokens": response['usage']['inputTokens'],
-                "outputTokens": response['usage']['outputTokens']
+                "inputTokens": input_tokens,
+                "outputTokens": output_tokens
             })
         }
         
