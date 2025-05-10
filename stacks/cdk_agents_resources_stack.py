@@ -179,19 +179,20 @@ class CdkAgentsResourcesStack(Stack):
         )
         self.get_history_lambda = self.builder.build_lambda_function(lambda_config)
         
-        # Create add_resource Lambda function
-        function_name = "add_resource"
-        lambda_config = LambdaConfig(
+        # Create add_resource Lambda Docker function 
+        function_name = "add_resource"       
+        docker_image = _lambda.DockerImageCode.from_image_asset(
+            directory=f"{self.Paths.LOCAL_ARTIFACTS_LAMBDA_DOCKER}/chatbot/{function_name}",
+        )
+        
+        lambda_config = LambdaDockerConfig(
             function_name=function_name,
-            handler=f"{function_name}/lambda_function.lambda_handler",
-            code_path=f"{self.Paths.LOCAL_ARTIFACTS_LAMBDA_CODE}/chatbot",
-            runtime=_lambda.Runtime.PYTHON_3_11,
+            code=docker_image,
             memory_size=1024,
             timeout=Duration.seconds(60),
-            environment=common_env_vars,
-            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs, self.lambda_layer_pinecone, self.lambda_layer_docs, self.lambda_layer_requests]
+            environment=common_env_vars
         )
-        self.add_resource_lambda = self.builder.build_lambda_function(lambda_config)
+        self.add_resource_lambda = self.builder.build_lambda_docker_function(lambda_config)
         
         # Create delete_resource Lambda function
         function_name = "delete_resource"
