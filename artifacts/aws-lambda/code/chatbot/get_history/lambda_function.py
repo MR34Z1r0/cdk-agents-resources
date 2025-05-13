@@ -83,11 +83,11 @@ def lambda_handler(event, context):
         formatted_history = []
         for item in history_items:
             formatted_history.append({
-                "userId": item.get("ALUMNO_ID", ""),
-                "dateTime": item.get("DATE_TIME", ""),
-                "syllabusEventId": item.get("SILABUS_ID", ""),
-                "userMessage": item.get("USER_MESSAGE", ""),
-                "aiMessage": item.get("AI_MESSAGE", "")
+                "ALUMNO_ID": item.get("ALUMNO_ID", ""),
+                "DATE_TIME": item.get("DATE_TIME", ""),
+                "SILABUS_ID": item.get("SILABUS_ID", ""),
+                "USER_MESSAGE": item.get("USER_MESSAGE", ""),
+                "AI_MESSAGE": item.get("AI_MESSAGE", "")
             })
         
         logger.info(f"Historial obtenido exitosamente: {len(formatted_history)} mensajes")

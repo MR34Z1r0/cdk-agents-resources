@@ -332,8 +332,8 @@ def lambda_handler(event, context):
                 "success": True,
                 "message": "Respuesta generada correctamente",
                 "answer": answer,
-                "inputTokens": input_tokens,
-                "outputTokens": output_tokens
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens
             })
         }
         
