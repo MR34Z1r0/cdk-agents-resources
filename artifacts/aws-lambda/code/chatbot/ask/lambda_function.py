@@ -256,6 +256,7 @@ def lambda_handler(event, context):
         usuario_rol = body["usuario_rol"]
         institucion = body["institucion"]
         curso = body["curso"]
+        resources = body.get("resources", None)
         
         # Obtener historial de conversación
         # Busca los messages de ese syllabus_event_id y user_id
@@ -277,15 +278,18 @@ def lambda_handler(event, context):
             
         logger.info(f"formatted_history: {formatted_history}")
  
-        # Obtener contexto
-        # Busca los resources de ese syllabus_event_id
-        logger.info(f"Buscando recursos para syllabus_event_id: {syllabus_event_id}")
-        data = search_in_dynamodb(syllabus_event_id)
-        
-        # Se envía los resources encontrados para buscar en Pinecone
+        if resources:
+            if isinstance(resources, str):
+                resources = resources.split(",")
+            data = {
+                "resources": [{"resource_id": rid} for rid in resources]
+            }
+        else:
+            logger.info(f"Buscando recursos para syllabus_event_id: {syllabus_event_id}")
+            data = search_in_dynamodb(syllabus_event_id)
+            
         pinecone_context = get_documents_context(message_text, None, data)
         
-        # Construir prompt
         prompt = DATA_PROMPT.format(
             asistente_nombre=asistente_nombre,
             usuario_nombre=usuario_nombre,
