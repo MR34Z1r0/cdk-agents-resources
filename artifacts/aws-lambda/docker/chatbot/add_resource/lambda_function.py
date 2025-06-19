@@ -150,7 +150,7 @@ def process_resource_addition(resource_id: str, title: str, drive_id: str) -> Di
         if existing_hash:
             logger.info(f"Hash {file_hash} already exists in DynamoDB")
             os.remove(file_path)  # Limpiar archivo temporal
-            return {'success': False, 'message': 'Resource already exists'}
+            return {'success': True, 'message': 'Resource already exists'}
         
         # Subir archivo a S3
         object_key = f"{S3_PATH}/{sanitize_filename(title)}"
