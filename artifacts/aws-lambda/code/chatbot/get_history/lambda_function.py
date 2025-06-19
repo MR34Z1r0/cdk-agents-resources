@@ -42,7 +42,7 @@ def lambda_handler(event, context):
             body = event
         
         # Validar campos requeridos usando formato estandarizado
-        required_fields = ["userId", "syllabusEventId"]
+        required_fields = ["user_id", "syllabus_event_id"]
         missing_fields = [field for field in required_fields if field not in body]
         
         if missing_fields:
@@ -55,8 +55,8 @@ def lambda_handler(event, context):
                     })
                 }
         
-        user_id = body["userId"]
-        syllabus_event_id = body["syllabusEventId"]
+        user_id = body["user_id"]
+        syllabus_event_id = body["syllabus_event_id"]
         
         logger.info(f"Obteniendo historial para usuario: {user_id}, syllabus: {syllabus_event_id}")
         

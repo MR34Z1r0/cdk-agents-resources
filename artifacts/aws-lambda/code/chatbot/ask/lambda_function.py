@@ -121,19 +121,17 @@ def get_message_history(alumno_id, silabo_id, cant_items=CHATBOT_HISTORY_ELEMENT
     Obtiene el historial de mensajes utilizando DynamoDBHelper.
     """
     try:
-        # KeyConditionExpression solo puede usar claves de partición y sort
-        key_condition = Key("ALUMNO_ID").eq(alumno_id)
-        
-        # Filtro adicional que se aplica después de la condición de clave
-        filter_expression = (
-            Attr("SILABUS_ID").eq(silabo_id) &
-            Attr("IS_DELETED").eq(False)
-        )
-        
+        # Usa query si estás buscando por ALUMNO_ID específico:
         messages = dynamo_chat_history.query_table(
-            key_condition=key_condition,
-            filter_expression=filter_expression,
-            limit=cant_items
+            key_condition=f"{dynamo_chat_history.pk_name} = :user_id",
+            filter_expression=f"SILABUS_ID = :syllabus_id AND IS_DELETED = :is_deleted",
+            expression_attribute_values={
+                ":user_id": alumno_id,
+                ":syllabus_id": silabo_id,
+                ":is_deleted": False
+            },
+            limit=cant_items * 5,
+            scan_forward=False  # Para obtener los más recientes primero
         )
         
         # Ordenar por fecha descendente y limitar a cant_items

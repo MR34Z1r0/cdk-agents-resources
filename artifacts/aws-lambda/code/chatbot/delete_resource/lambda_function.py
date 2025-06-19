@@ -174,7 +174,7 @@ def process_resource_deletion(resource_id: str, silabus_id: str) -> Dict[str, An
                 deleted_tables.append(DYNAMO_RESOURCES_HASH_TABLE)
                 logger.info(f"Registro eliminado de la tabla hash: {file_hash}")
             
-            library_item = library_table_helper.get_item(silabus_id)
+            library_item = dynamo_library.get_item(silabus_id)
             if library_item and "resources" in library_item and resource_id in library_item["resources"]:
                 # Eliminar un resource_id de library_item["resources"]
                 update_expression = "SET resources = :resources"
@@ -183,7 +183,7 @@ def process_resource_deletion(resource_id: str, silabus_id: str) -> Dict[str, An
                     ":resources": new_resources
                 }
                 
-                library_table_helper.update_item(
+                dynamo_library.update_item(
                     partition_key=silabus_id, 
                     update_expression=update_expression,
                     expression_attribute_values=expression_attribute_values
