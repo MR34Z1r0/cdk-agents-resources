@@ -209,6 +209,7 @@ class CdkAgentsResourcesStack(Stack):
         self.delete_resource_lambda = self.builder.build_lambda_function(lambda_config)
         
         # Grant permissions
+        self.resources_bucket.grant_read_write(self.ask_lambda)
         self.resources_bucket.grant_read_write(self.add_resource_lambda)
         self.resources_bucket.grant_read_write(self.delete_resource_lambda)         
         
@@ -220,6 +221,7 @@ class CdkAgentsResourcesStack(Stack):
         self.library_table.grant_read_data(self.add_resource_lambda)
         self.library_table.grant_read_write_data(self.delete_resource_lambda)
         
+        self.learning_resources_table.grant_read_write_data(self.ask_lambda)
         self.learning_resources_table.grant_read_write_data(self.add_resource_lambda)
         self.learning_resources_table.grant_read_write_data(self.delete_resource_lambda)
         self.learning_resources_hash_table.grant_read_write_data(self.add_resource_lambda)
