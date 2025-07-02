@@ -25,7 +25,7 @@ PARAMETER_VALUE = json.loads(ssm_chatbot.get_parameter_value())
 EMBEDDINGS_MODEL_ID = PARAMETER_VALUE["EMBEDDINGS_MODEL_ID"]
 EMBEDDINGS_REGION = PARAMETER_VALUE["EMBEDDINGS_REGION"]
 # Secrets
-secret_pinecone = SecretsHelper(f"{ENVIRONMENT}/{PROJECT_NAME}/pinecone-api-key")
+secret_pinecone = SecretsHelper(f"{ENVIRONMENT}/{PROJECT_NAME}/pinecone-api-key2")
 
 PINECONE_INDEX_NAME = secret_pinecone.get_secret_value("PINECONE_INDEX_NAME")
 PINECONE_API_KEY = secret_pinecone.get_secret_value("PINECONE_API_KEY")
