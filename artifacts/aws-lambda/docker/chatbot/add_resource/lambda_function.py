@@ -239,7 +239,7 @@ def sanitize_filename(filename: str) -> str:
     normalized_name = unicodedata.normalize('NFKD', filename.lower()).encode('ASCII', 'ignore').decode('ASCII')
     return re.sub(r"[., ]", "_", normalized_name)
 
-def chunk_text(text: str, chunk_size: int = 400, overlap: int = 20) -> List[str]:
+def chunk_text(text: str, chunk_size: int = 500, overlap: int = 20) -> List[str]:
     """
     Divide el texto en chunks con solapamiento.
     
