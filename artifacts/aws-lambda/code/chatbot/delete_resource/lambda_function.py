@@ -42,16 +42,17 @@ hash_table_helper = DynamoDBHelper(
     table_name=DYNAMO_RESOURCES_HASH_TABLE,
     pk_name="file_hash"
 )
+library_table_helper = DynamoDBHelper(
+    table_name=DYNAMO_LIBRARY_TABLE,
+    pk_name="silabus_id"
+)
 pinecone_helper = PineconeHelper(
     index_name=PINECONE_INDEX_NAME,
     api_key=PINECONE_API_KEY,
     embeddings_model_id=EMBEDDINGS_MODEL_ID,
     embeddings_region=EMBEDDINGS_REGION
 )
-dynamo_library = DynamoDBHelper(
-    table_name=DYNAMO_LIBRARY_TABLE,
-    pk_name="silabus_id"
-)
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Handler principal de Lambda para eliminar un recurso educativo.
@@ -173,8 +174,29 @@ def process_resource_deletion(resource_id: str, silabus_id: str) -> Dict[str, An
                 hash_table_helper.delete_item(file_hash)
                 deleted_tables.append(DYNAMO_RESOURCES_HASH_TABLE)
                 logger.info(f"Registro eliminado de la tabla hash: {file_hash}")
+
+            library_item = library_table_helper.get_item(silabus_id)
+            if library_item and "resources" in library_item and any(r.get('resource_id') == resource_id for r in library_item["resources"]):
+                # Eliminar el recurso
+                new_resources = [r for r in library_item["resources"] if r.get('resource_id') != resource_id]
+
+                update_expression = "SET resources = :resources"
+                expression_attribute_values = {
+                    ":resources": new_resources
+                }
+
+                library_table_helper.update_item(
+                    partition_key=silabus_id, 
+                    update_expression=update_expression,
+                    expression_attribute_values=expression_attribute_values
+                )
+                deleted_tables.append(DYNAMO_LIBRARY_TABLE)
+                logger.info(f"Recurso {resource_id} eliminado del listado de recursos de silabus {silabus_id}")
+            else:
+                logger.info(f"No se encontró el recurso {resource_id} en la lista de recursos de silabus {silabus_id}")
             
-            library_item = dynamo_library.get_item(silabus_id)
+            '''
+            library_item = library_table_helper.get_item(silabus_id)
             if library_item and "resources" in library_item and resource_id in library_item["resources"]:
                 # Eliminar un resource_id de library_item["resources"]
                 update_expression = "SET resources = :resources"
@@ -183,7 +205,7 @@ def process_resource_deletion(resource_id: str, silabus_id: str) -> Dict[str, An
                     ":resources": new_resources
                 }
                 
-                dynamo_library.update_item(
+                library_table_helper.update_item(
                     partition_key=silabus_id, 
                     update_expression=update_expression,
                     expression_attribute_values=expression_attribute_values
@@ -192,7 +214,8 @@ def process_resource_deletion(resource_id: str, silabus_id: str) -> Dict[str, An
                 logger.info(f"Recurso {resource_id} eliminado del listado de recursos de silabus {silabus_id}")
             else:
                 logger.info(f"No se encontró el recurso {resource_id} en la lista de recursos de silabus {silabus_id}")
-                
+            '''
+
             files_table_helper.delete_item(resource_id)
             deleted_tables.append(DYNAMO_RESOURCES_TABLE)
             logger.info(f"Registro eliminado de la tabla de recursos: {resource_id}")

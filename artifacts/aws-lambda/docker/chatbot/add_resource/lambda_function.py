@@ -8,6 +8,7 @@ import boto3
 from pathlib import Path
 from typing import Dict, Any, List
 from uuid import uuid4
+from datetime import datetime
 
 # Importar helpers de aje-libs
 from aje_libs.common.helpers.s3_helper import S3Helper
@@ -24,6 +25,7 @@ PROJECT_NAME = os.environ["PROJECT_NAME"]
 OWNER = os.environ["OWNER"]
 DYNAMO_RESOURCES_TABLE = os.environ["DYNAMO_RESOURCES_TABLE"]
 DYNAMO_RESOURCES_HASH_TABLE = os.environ["DYNAMO_RESOURCES_HASH_TABLE"]
+DYNAMO_LIBRARY_TABLE = os.environ["DYNAMO_LIBRARY_TABLE"]
 S3_RESOURCES_BUCKET = os.environ["S3_RESOURCES_BUCKET"]
 
 # Parameter Store
@@ -52,6 +54,10 @@ files_table_helper = DynamoDBHelper(
 hash_table_helper = DynamoDBHelper(
     table_name=DYNAMO_RESOURCES_HASH_TABLE,
     pk_name="file_hash"
+)
+library_table_helper = DynamoDBHelper(
+    table_name=DYNAMO_LIBRARY_TABLE,
+    pk_name="silabus_id"
 )
 pinecone_helper = PineconeHelper(
     index_name=PINECONE_INDEX_NAME,
@@ -96,9 +102,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         resource_id = body["RecursoDidacticoId"]
         title = body["TituloRecurso"]
         drive_id = body["DriveId"]
+        silabus_id = body["SilaboEventoId"]
         
         # Procesar el recurso
-        result = process_resource_addition(resource_id, title, drive_id)
+        result = process_resource_addition(resource_id, title, drive_id, silabus_id)
         
         if result['success']:
             return {            
@@ -129,13 +136,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             })
         }
 
-def process_resource_addition(resource_id: str, title: str, drive_id: str) -> Dict[str, Any]:
+def process_resource_addition(resource_id: str, title: str, drive_id: str, silabus_id: str) -> Dict[str, Any]:
     """
     Procesa la adición de un recurso educativo.
     
     :param resource_id: ID del recurso
     :param title: Título del recurso
     :param drive_id: ID de Google Drive
+    :param silabus_id: ID del silabo
     :return: Resultado de la operación
     """
     try:
@@ -178,6 +186,29 @@ def process_resource_addition(resource_id: str, title: str, drive_id: str) -> Di
             'file_hash': file_hash,
             's3_path': s3_path
         })
+
+        try:
+            library_item = library_table_helper.get_item(silabus_id)
+            if library_item and "resources" in library_item:
+                resources = library_item["resources"]
+                
+                if any(r.get('resource_id') == resource_id for r in resources):
+                    return {'success': True, 'message': 'Resource already associated with the selected syllabus'}
+                
+                resources.append({'resource_id': resource_id})
+            else:
+                resources = [{'resource_id': resource_id}]
+
+            item = {
+                "silabus_id": silabus_id,
+                "resources": resources,
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            library_table_helper.put_item(item)
+            logger.info(f"Sílabo '{silabus_id}' actualizado o creado con {len(resources)} recursos")
+        except Exception as e:
+            logger.error(f"Error eliminando registros de DynamoDB: {str(e)}", exc_info=True)
+            raise
         
         # Limpiar archivo temporal
         os.remove(file_path)

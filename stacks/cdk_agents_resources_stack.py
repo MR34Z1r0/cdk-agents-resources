@@ -218,7 +218,7 @@ class CdkAgentsResourcesStack(Stack):
         self.chat_history_table.grant_read_write_data(self.get_history_lambda)
         
         self.library_table.grant_read_write_data(self.ask_lambda)
-        self.library_table.grant_read_data(self.add_resource_lambda)
+        self.library_table.grant_read_write_data(self.add_resource_lambda)
         self.library_table.grant_read_write_data(self.delete_resource_lambda)
         
         self.learning_resources_table.grant_read_write_data(self.ask_lambda)
