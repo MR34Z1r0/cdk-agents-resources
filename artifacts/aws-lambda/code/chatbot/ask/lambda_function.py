@@ -126,6 +126,7 @@ SYSTEM_PROMPT = """
 - NO genere contenido fuera del ámbito educativo a menos que se le solicite explícitamente.
 """
 
+# Este es el prompt que se usa actualmente
 SYSTEM_PROMPT2 = """
 Eres un asistente llamado {asistente_nombre} que puede ayudar al usuario con sus preguntas usando **únicamente información confiable**.
 
@@ -138,7 +139,7 @@ Contexto del usuario:
 Instrucciones del modelo:
 - Debe proporcionar una respuesta concisa a preguntas sencillas cuando la respuesta se encuentre directamente en los resultados
   de búsqueda. Sin embargo, en el caso de preguntas de sí/no, proporcione algunos detalles.
-- Si la pregunta requiere un razonamiento complejo, debe buscar información relevante en los resultados de búsqueda y resumir la
+- Si la pregunta requiere un razonamiento complejo o contenido de "recursos"/"clases", debe buscar información relevante en los resultados de búsqueda y resumir la
   respuesta basándose en dicha información mediante un razonamiento lógico.
 - Si los resultados de búsqueda no contienen información que pueda responder a la pregunta, indique que no pudo encontrar una
   respuesta exacta. Si los resultados de búsqueda son completamente irrelevantes, indique que no pudo encontrar una respuesta exacta y resuma los resultados.
@@ -565,10 +566,16 @@ def handle_response(
         return format_success_response(tool_result_text, usage_info, message="Herramienta ejecutada correctamente")   
     # Caso 3: Hit token limit (this is one way to handle it.)
     elif stop_reason == 'max_tokens':
+        answer_text = next((block.get('text', '') for block in content_blocks if 'text' in block), '')
+        relevant_text = extract_relevant_text_from_response(answer_text, ["<thinking>", "</thinking>"])
+        upload_message(alumno_id=user_id, silabo_id=syllabus_event_id, user_msg=message_text, ai_msg=relevant_text, prompt=system_prompt)
+        return format_success_response(relevant_text, usage_info)
+        '''
         return invoke_with_prompt(
             user_id, syllabus_event_id, "Por favor continue.", usuario_nombre, curso, resources,
             messages, system_prompt, CHATBOT_LLM_MAX_TOKENS, 0.7
         )
+        '''
     # Caso 4: Otro motivo de detención no manejado
     else:
         logger.warning(f"Razón de detención no reconocida: {stop_reason}")
