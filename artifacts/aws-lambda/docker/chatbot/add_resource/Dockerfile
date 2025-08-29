@@ -1,7 +1,15 @@
 FROM public.ecr.aws/lambda/python:3.11
 
-# Instalar dependencias de sistema necesarias para lxml
-RUN yum install -y gcc libxml2-devel libxslt-devel
+# Instalar herramientas y librerías necesarias para compilar Pillow y lxml
+RUN yum install -y \
+    gcc \
+    libjpeg-turbo-devel \
+    zlib-devel \
+    freetype-devel \
+    libpng-devel \
+    libxml2-devel \
+    libxslt-devel \
+    && yum clean all
 
 # Copiar requirements.txt e instalar dependencias
 COPY requirements.txt .

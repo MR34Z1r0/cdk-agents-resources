@@ -9,7 +9,6 @@ class Paths:
         # Local paths 
         self.LOCAL_ARTIFACTS_LAMBDA = f'{self.LOCAL_ARTIFACTS}/aws-lambda' 
         self.LOCAL_ARTIFACTS_LAMBDA_CODE = f'{self.LOCAL_ARTIFACTS_LAMBDA}/code' 
+        #self.LOCAL_ARTIFACTS_LAMBDA_MCP = f'{self.LOCAL_ARTIFACTS_LAMBDA_CODE}/mcp'
         self.LOCAL_ARTIFACTS_LAMBDA_LAYER = f'{self.LOCAL_ARTIFACTS_LAMBDA}/layer' 
         self.LOCAL_ARTIFACTS_LAMBDA_DOCKER = f'{self.LOCAL_ARTIFACTS_LAMBDA}/docker' 
-        
-        # AWS paths 

@@ -42,7 +42,7 @@ def lambda_handler(event, context):
             body = event
         
         # Validar campos requeridos usando formato estandarizado
-        required_fields = ["userId", "syllabusEventId"]
+        required_fields = ["user_id", "syllabus_event_id"]
         missing_fields = [field for field in required_fields if field not in body]
         
         if missing_fields:
@@ -55,8 +55,8 @@ def lambda_handler(event, context):
                     })
                 }
         
-        user_id = body["userId"]
-        syllabus_event_id = body["syllabusEventId"]
+        user_id = body["user_id"]
+        syllabus_event_id = body["syllabus_event_id"]
         
         logger.info(f"Obteniendo historial para usuario: {user_id}, syllabus: {syllabus_event_id}")
         
@@ -83,11 +83,11 @@ def lambda_handler(event, context):
         formatted_history = []
         for item in history_items:
             formatted_history.append({
-                "userId": item.get("ALUMNO_ID", ""),
-                "dateTime": item.get("DATE_TIME", ""),
-                "syllabusEventId": item.get("SILABUS_ID", ""),
-                "userMessage": item.get("USER_MESSAGE", ""),
-                "aiMessage": item.get("AI_MESSAGE", "")
+                "ALUMNO_ID": item.get("ALUMNO_ID", ""),
+                "DATE_TIME": item.get("DATE_TIME", ""),
+                "SILABUS_ID": item.get("SILABUS_ID", ""),
+                "USER_MESSAGE": item.get("USER_MESSAGE", ""),
+                "AI_MESSAGE": item.get("AI_MESSAGE", "")
             })
         
         logger.info(f"Historial obtenido exitosamente: {len(formatted_history)} mensajes")
