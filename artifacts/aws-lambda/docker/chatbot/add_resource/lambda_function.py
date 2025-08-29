@@ -35,7 +35,7 @@ PARAMETER_VALUE = json.loads(ssm_chatbot.get_parameter_value())
 EMBEDDINGS_MODEL_ID = PARAMETER_VALUE["EMBEDDINGS_MODEL_ID"]
 EMBEDDINGS_REGION = PARAMETER_VALUE["EMBEDDINGS_REGION"]
 # Secrets
-secret_pinecone = SecretsHelper(f"{ENVIRONMENT}/{PROJECT_NAME}/pinecone-api-key2")
+secret_pinecone = SecretsHelper(f"{ENVIRONMENT}/{PROJECT_NAME}/pinecone-api")
 
 PINECONE_INDEX_NAME = secret_pinecone.get_secret_value("PINECONE_INDEX_NAME")
 PINECONE_API_KEY = secret_pinecone.get_secret_value("PINECONE_API_KEY")
@@ -160,25 +160,36 @@ def process_resource_addition(resource_id: str, title: str, drive_id: str, silab
             os.remove(file_path)  # Limpiar archivo temporal
             return {'success': True, 'message': 'Resource already exists'}
         
+        # Registrar en DynamoDB
+        metadata = {
+            'resource_id': resource_id,
+            'resource_title': title,
+            'drive_id': drive_id,
+            'file_hash': file_hash,
+            #'s3_path': s3_path,
+            #'pinecone_ids': []
+        }
+        
+        # Procesar el documento y obtener los IDs de Pinecone
+        pinecone_ids = process_document_to_pinecone(file_path, metadata)
+        if not pinecone_ids:
+            os.remove(file_path)
+            raise RuntimeError("Failed to process document for Pinecone")
+
         # Subir archivo a S3
         object_key = f"{S3_PATH}/{sanitize_filename(title)}"
         s3_path = s3_helper.upload_file(file_path, object_key)
-        
-        # Registrar en DynamoDB
+
         resource_data = {
             'resource_id': resource_id,
             'resource_title': title,
             'drive_id': drive_id,
             'file_hash': file_hash,
             's3_path': s3_path,
-            'pinecone_ids': []
+            'pinecone_ids': pinecone_ids
         }
-        
-        # Procesar el documento y obtener los IDs de Pinecone
-        pinecone_ids = process_document_to_pinecone(file_path, resource_data)
-        
         # Actualizar los IDs de Pinecone en el recurso
-        resource_data['pinecone_ids'] = pinecone_ids
+        #resource_data['pinecone_ids'] = pinecone_ids
         
         # Guardar en DynamoDB
         files_table_helper.put_item(resource_data)

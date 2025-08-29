@@ -79,7 +79,18 @@ class CdkAgentsResourcesStack(Stack):
             removal_policy=RemovalPolicy.DESTROY
         )
         self.library_table = self.builder.build_dynamodb_table(dynamodb_config)
-    
+
+        # MCP Session Table
+        '''
+        dynamodb_config = DynamoDBConfig(
+            table_name="mcp_sessions",
+            partition_key="session_id",
+            partition_key_type=dynamodb.AttributeType.STRING,
+            removal_policy=RemovalPolicy.DESTROY
+        )
+        self.mcp_sessions_table = self.builder.build_dynamodb_table(dynamodb_config)
+        '''
+
     def create_s3_buckets(self):
         """Create S3 buckets for resource storage"""
         s3_config = S3Config(
@@ -121,7 +132,20 @@ class CdkAgentsResourcesStack(Stack):
             "LambdaRequestsLayer",
             layer_version_arn=self.Layers.AWS_LAMBDA_LAYERS.get("layer_requests")
         )
-    
+        '''
+        self.lambda_layer_awslabs_mcp_lambda_handler = _lambda.LayerVersion.from_layer_version_arn(
+            self,
+            "LambdaAwslabsMcpLambdaHandlerLayer",
+            layer_version_arn=self.Layers.AWS_LAMBDA_LAYERS.get("layer_awslabs_mcp_lambda_handler")
+        )
+
+        self.lambda_layer_mcp = _lambda.LayerVersion.from_layer_version_arn(
+            self,
+            "LambdaMcpLayer",
+            layer_version_arn=self.Layers.AWS_LAMBDA_LAYERS.get("layer_mcp")
+        )
+        '''
+
     def create_lambda_functions(self):
         """Create all Lambda functions needed for the chatbot"""
         
@@ -134,11 +158,26 @@ class CdkAgentsResourcesStack(Stack):
             "DYNAMO_LIBRARY_TABLE": self.library_table.table_name,
             "DYNAMO_RESOURCES_TABLE": self.learning_resources_table.table_name,
             "DYNAMO_RESOURCES_HASH_TABLE": self.learning_resources_hash_table.table_name,
+            #"DYNAMO_MCP_SESSIONS_TABLE": self.mcp_sessions_table.table_name,
             "S3_RESOURCES_BUCKET": self.resources_bucket.bucket_name
         }
         
         # Create ask Lambda function
         function_name = "ask"
+        '''
+        docker_image = _lambda.DockerImageCode.from_image_asset(
+            directory=f"{self.Paths.LOCAL_ARTIFACTS_LAMBDA_DOCKER}/chatbot/{function_name}",
+        )
+        
+        lambda_config = LambdaDockerConfig(
+            function_name=function_name,
+            code=docker_image,
+            memory_size=1024,
+            timeout=Duration.seconds(60),
+            environment=common_env_vars
+        )
+        self.ask_lambda = self.builder.build_lambda_docker_function(lambda_config)
+        '''
         lambda_config = LambdaConfig(
             function_name=function_name,
             handler=f"{function_name}/lambda_function.lambda_handler",
@@ -150,7 +189,7 @@ class CdkAgentsResourcesStack(Stack):
             layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs, self.lambda_layer_pinecone]
         )
         self.ask_lambda = self.builder.build_lambda_function(lambda_config)
-        
+
         # Create delete_history Lambda function
         function_name = "delete_history"
         lambda_config = LambdaConfig(
@@ -184,7 +223,6 @@ class CdkAgentsResourcesStack(Stack):
         docker_image = _lambda.DockerImageCode.from_image_asset(
             directory=f"{self.Paths.LOCAL_ARTIFACTS_LAMBDA_DOCKER}/chatbot/{function_name}",
         )
-        
         lambda_config = LambdaDockerConfig(
             function_name=function_name,
             code=docker_image,
@@ -207,11 +245,41 @@ class CdkAgentsResourcesStack(Stack):
             layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs, self.lambda_layer_pinecone]
         )
         self.delete_resource_lambda = self.builder.build_lambda_function(lambda_config)
-        
+
+        # Create MCP Lambda function
+        '''
+        function_name = "authorizer"
+        lambda_config = LambdaConfig(
+            function_name=function_name,
+            handler=f"{function_name}/lambda_function.lambda_handler",
+            code_path=f"{self.Paths.LOCAL_ARTIFACTS_LAMBDA_CODE}/mcp",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            memory_size=512,
+            timeout=Duration.seconds(30),
+            environment=common_env_vars,
+            layers=[self.lambda_layer_powertools, self.lambda_layer_aje_libs]
+        )
+        self.mcp_authorizer_lambda = self.builder.build_lambda_function(lambda_config)
+
+        function_name = "server"
+        docker_image = _lambda.DockerImageCode.from_image_asset(
+            directory=f"{self.Paths.LOCAL_ARTIFACTS_LAMBDA_DOCKER}/chatbot/{function_name}",
+        )
+
+        lambda_config = LambdaDockerConfig(
+            function_name=function_name,
+            code=docker_image,
+            memory_size=1024,
+            timeout=Duration.seconds(60),
+            environment=common_env_vars
+        )
+        self.mcp_server_lambda = self.builder.build_lambda_docker_function(lambda_config)
+        '''
         # Grant permissions
         self.resources_bucket.grant_read_write(self.ask_lambda)
         self.resources_bucket.grant_read_write(self.add_resource_lambda)
-        self.resources_bucket.grant_read_write(self.delete_resource_lambda)         
+        self.resources_bucket.grant_read_write(self.delete_resource_lambda)
+        #self.resources_bucket.grant_read_write(self.mcp_server_lambda)     
         
         self.chat_history_table.grant_read_write_data(self.ask_lambda)
         self.chat_history_table.grant_read_write_data(self.delete_history_lambda)
@@ -220,12 +288,19 @@ class CdkAgentsResourcesStack(Stack):
         self.library_table.grant_read_write_data(self.ask_lambda)
         self.library_table.grant_read_write_data(self.add_resource_lambda)
         self.library_table.grant_read_write_data(self.delete_resource_lambda)
+        #self.library_table.grant_read_write_data(self.mcp_server_lambda)
         
         self.learning_resources_table.grant_read_write_data(self.ask_lambda)
         self.learning_resources_table.grant_read_write_data(self.add_resource_lambda)
         self.learning_resources_table.grant_read_write_data(self.delete_resource_lambda)
+        #self.learning_resources_table.grant_read_write_data(self.mcp_server_lambda)
+        self.learning_resources_hash_table.grant_read_write_data(self.ask_lambda)
         self.learning_resources_hash_table.grant_read_write_data(self.add_resource_lambda)
         self.learning_resources_hash_table.grant_read_write_data(self.delete_resource_lambda)
+        #self.learning_resources_hash_table.grant_read_write_data(self.mcp_server_lambda)
+
+        #self.mcp_sessions_table.grant_read_write_data(self.mcp_authorizer_lambda)
+        #self.mcp_sessions_table.grant_read_write_data(self.mcp_server_lambda)
         
         # Grant Bedrock permissions to Lambda functions
         bedrock_policy = iam.PolicyStatement(
@@ -263,7 +338,9 @@ class CdkAgentsResourcesStack(Stack):
         self.add_resource_lambda.add_to_role_policy(ssm_policy)
         self.delete_resource_lambda.add_to_role_policy(ssm_policy)
         self.get_history_lambda.add_to_role_policy(ssm_policy)
-        self.delete_history_lambda.add_to_role_policy(ssm_policy) 
+        self.delete_history_lambda.add_to_role_policy(ssm_policy)
+        #self.mcp_authorizer_lambda.add_to_role_policy(ssm_policy)
+        #self.mcp_server_lambda.add_to_role_policy(ssm_policy)
 
         self.ask_lambda.add_to_role_policy(secrets_policy)
         self.add_resource_lambda.add_to_role_policy(secrets_policy)
@@ -299,11 +376,13 @@ class CdkAgentsResourcesStack(Stack):
         root_resource_v1 = root_resource_api.add_resource("v1")
 
         # Endpoints for the main functionalities
-        root_resource_ask = root_resource_v1.add_resource("ask") 
+        root_resource_ask = root_resource_v1.add_resource("ask")
         root_resource_delete_history = root_resource_v1.add_resource("delete_history")
         root_resource_get_history = root_resource_v1.add_resource("get_history")
         root_resource_add_resource = root_resource_v1.add_resource("add_resource")
         root_resource_delete_resource = root_resource_v1.add_resource("delete_resource")
+        root_resource_mcp_authorizer = root_resource_v1.add_resource("authorizer")
+        root_resource_mcp_server = root_resource_v1.add_resource("server")
 
         # Define all API-Lambda integrations for the API methods
         root_resource_ask.add_method("POST", apigw.LambdaIntegration(self.ask_lambda))
@@ -311,6 +390,8 @@ class CdkAgentsResourcesStack(Stack):
         root_resource_get_history.add_method("POST", apigw.LambdaIntegration(self.get_history_lambda))
         root_resource_add_resource.add_method("POST", apigw.LambdaIntegration(self.add_resource_lambda))
         root_resource_delete_resource.add_method("POST", apigw.LambdaIntegration(self.delete_resource_lambda))
+        #root_resource_mcp_authorizer.add_method("POST", apigw.LambdaIntegration(self.mcp_authorizer_lambda))
+        #root_resource_mcp_server.add_method("POST", apigw.LambdaIntegration(self.mcp_server_lambda))
         
         # Store the deployment stage for use in outputs
         self.deployment_stage = self.PROJECT_CONFIG.environment.value.lower()
