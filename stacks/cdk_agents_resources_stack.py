@@ -381,8 +381,8 @@ class CdkAgentsResourcesStack(Stack):
         root_resource_get_history = root_resource_v1.add_resource("get_history")
         root_resource_add_resource = root_resource_v1.add_resource("add_resource")
         root_resource_delete_resource = root_resource_v1.add_resource("delete_resource")
-        root_resource_mcp_authorizer = root_resource_v1.add_resource("authorizer")
-        root_resource_mcp_server = root_resource_v1.add_resource("server")
+        #root_resource_mcp_authorizer = root_resource_v1.add_resource("authorizer")
+        #root_resource_mcp_server = root_resource_v1.add_resource("server")
 
         # Define all API-Lambda integrations for the API methods
         root_resource_ask.add_method("POST", apigw.LambdaIntegration(self.ask_lambda))
