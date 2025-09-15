@@ -368,6 +368,31 @@ def extract_relevant_text_from_response(text: str, tags: list[str] = None) -> st
         return cleaned
     return text.strip()
 
+def strip_internal_thoughts(text: str) -> str:
+    """
+    Quita segmentos de 'pensamiento' que algunos modelos devuelven en texto.
+    No toca HTML normal; solo etiquetas 'internas' típicas.
+    """
+    if not text:
+        return text
+
+    patterns = [
+        r'(?is)<thinking>.*?</thinking>',
+        r'(?is)<chain_of_thought>.*?</chain_of_thought>',
+        r'(?is)<cot>.*?</cot>',
+        r'(?is)<scratchpad>.*?</scratchpad>',
+        r'(?is)<reflection>.*?</reflection>',
+        r'(?is)<deliberate>.*?</deliberate>',
+        r'(?is)\[\[scratchpad\]\].*?\[\[/scratchpad\]\]',
+    ]
+
+    for pat in patterns:
+        text = re.sub(pat, '', text)
+
+    # Normaliza saltos de línea sobrantes y espacios
+    text = re.sub(r'\n{3,}', '\n\n', text).strip()
+    return text
+
 # Format Success Response
 def format_success_response(answer_text: str, usage_info: dict, message: str = "Respuesta generada correctamente") -> dict:
     """
@@ -502,10 +527,28 @@ def handle_response(
 
     # Caso 1: Respuesta directa
     if stop_reason in ['end_turn', 'stop_sequence']:
+        '''
         answer_text = next((block.get('text', '') for block in content_blocks if 'text' in block), '')
         relevant_text = extract_relevant_text_from_response(answer_text, ["<thinking>", "</thinking>"])
-        upload_message(alumno_id=user_id, silabo_id=syllabus_event_id, user_msg=message_text, ai_msg=relevant_text, prompt=system_prompt)
-        return format_success_response(relevant_text, usage_info)
+        '''
+        text_chunks = []
+        for block in content_blocks:
+            if 'text' in block:
+                cleaned = strip_internal_thoughts(block.get('text', ''))
+                if cleaned:
+                    text_chunks.append(cleaned)
+
+        answer_text = "\n\n".join(text_chunks).strip()
+
+        # Si después de limpiar queda vacío, intenta recuperar la parte antes del thinking
+        if not answer_text:
+            # Reintento: toma el primer bloque 'text' sin limpiar y quédate con lo previo a <thinking>
+            raw_first = next((block.get('text', '') for block in content_blocks if 'text' in block), '')
+            parts = re.split(r'(?is)<thinking>.*?</thinking>', raw_first)
+            answer_text = parts[0].strip() if parts else ''
+
+        upload_message(alumno_id=user_id, silabo_id=syllabus_event_id, user_msg=message_text, ai_msg=answer_text, prompt=system_prompt)
+        return format_success_response(answer_text, usage_info)
     # Caso 2: Tool Calling
     elif stop_reason == 'tool_use':
         tool_block = next((block for block in content_blocks if 'toolUse' in block), None)
