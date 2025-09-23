@@ -51,9 +51,13 @@ def lambda_handler(event, context):
                 "statusCode": 400,
                 "body": json.dumps({
                     "success": False,
-                    "message": f"Campos requeridos faltantes: {missing_fields}"
-                    })
-                }
+                    "message": f"Campos requeridos faltantes: {missing_fields}",
+                    "error": {
+                        "code": "MISSING_FIELDS",
+                        "details": f"Campos requeridos faltantes: {missing_fields}"
+                    }
+                })
+            }
         
         user_id = body["user_id"]
         syllabus_event_id = body["syllabus_event_id"]

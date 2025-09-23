@@ -634,13 +634,15 @@ def lambda_handler(event, context):
         missing_fields = [field for field in required_fields if field not in body]
         if missing_fields:
             return {
-                "success": False,
-                "message": f"Campos requeridos faltantes: {missing_fields}",
                 "statusCode": 400,
-                "error": {
-                    "code": "MISSING_FIELDS",
-                    "details": f"Campos requeridos faltantes: {missing_fields}"
-                }
+                "body": json.dumps({
+                    "success": False,
+                    "message": f"Campos requeridos faltantes: {missing_fields}",
+                    "error": {
+                        "code": "MISSING_FIELDS",
+                        "details": f"Campos requeridos faltantes: {missing_fields}"
+                    }
+                })
             }
         
         user_id = body["user_id"]

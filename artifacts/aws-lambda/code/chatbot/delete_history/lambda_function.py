@@ -41,10 +41,14 @@ def lambda_handler(event, context):
         if missing_fields:
             logger.error(f"Campos requeridos faltantes: {missing_fields}")
             return {
-            "statusCode": 400,
-            "body": json.dumps({
-                "success": False,
-                "message": f"Campos requeridos faltantes: {missing_fields}"
+                "statusCode": 400,
+                "body": json.dumps({
+                    "success": False,
+                    "message": f"Campos requeridos faltantes: {missing_fields}",
+                    "error": {
+                        "code": "MISSING_FIELDS",
+                        "details": f"Campos requeridos faltantes: {missing_fields}"
+                    }
                 })
             }
         

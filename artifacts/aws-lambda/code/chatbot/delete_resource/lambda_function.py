@@ -82,9 +82,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "statusCode": 400,
                 "body": json.dumps({
                     "success": False,
-                    "message": f"Campos requeridos faltantes: {missing_fields}"
-                    })
-                }
+                    "message": f"Campos requeridos faltantes: {missing_fields}",
+                    "error": {
+                        "code": "MISSING_FIELDS",
+                        "details": f"Campos requeridos faltantes: {missing_fields}"
+                    }
+                })
+            }
         
         resource_id = body["RecursoDidacticoId"]
         silabus_id = body['SilaboEventoId']
