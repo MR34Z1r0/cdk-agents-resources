@@ -333,7 +333,7 @@ def process_document_to_pinecone(file_path: str, metadata: Dict[str, Any]) -> Li
             return []
         
         # Dividir texto en chunks (sin usar langchain)
-        chunks = chunk_text(text_content)
+        chunks = chunk_text(clean_pdf_text_keep_lines(text_content))
         
         # Generar UUIDs para los vectores
         uuids = [str(uuid4()) for _ in range(len(chunks))]
@@ -369,3 +369,20 @@ def process_document_to_pinecone(file_path: str, metadata: Dict[str, Any]) -> Li
     except Exception as e:
         logger.error(f"Error processing document to Pinecone: {str(e)}", exc_info=True)
         return []
+    
+def clean_pdf_text_keep_lines(text: str) -> str:
+    # Paso 1: normalizar saltos múltiples -> un solo salto
+    text = re.sub(r'\n+', '\n', text)
+
+    # Paso 2: unir líneas que se cortaron a la mitad
+    # (si una línea no termina en ., :, ;, ? o !, probablemente no sea un final real)
+    text = re.sub(r'(?<![\.:\;\?\!])\n', ' ', text)
+
+    # Paso 3: quitar espacios extra
+    text = re.sub(r'[ \t]+', ' ', text)
+
+    # Paso 4: limpiar espacios al inicio/fin de cada línea
+    lines = [line.strip() for line in text.split("\n")]
+    text = "\n".join(lines).strip()
+
+    return text
