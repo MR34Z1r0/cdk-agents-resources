@@ -343,6 +343,7 @@ def process_document_to_pinecone(file_path: str, metadata: Dict[str, Any]) -> Li
         for chunk, doc_id in zip(chunks, uuids):
             # Obtener embeddings
             embedding = pinecone_helper.get_embeddings(chunk)
+            logger.info(f"Embeddings length: {len(embedding)}")
             # Crear vector con metadata
             vectors_to_upsert.append({
                 'id': doc_id,
