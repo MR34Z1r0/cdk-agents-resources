@@ -583,11 +583,26 @@ def handle_response(
                     f"{recursos_listados}"
                 )
 
+            logger.info(f"Resultado de la herramienta get_resources: {tool_result_text}")
+            
+            # Retornar resultado a Nova
+            tool_result = [{
+                "toolResult": {
+                    "toolUseId": tool_use_id,
+                    "content": [{"text": tool_result_text}],
+                    "status": "success"
+                }
+            }]
+        
+            return invoke(
+                user_id, syllabus_event_id, message_text, usuario_nombre, curso, resources,
+                tool_result, messages, system_prompt, CHATBOT_LLM_MAX_TOKENS, 0
+            )
+
         elif tool_name == "retrieve_context":
             pinecone_chunks = retrieve_context(syllabus_event_id, message_text, resources)
             
             # Retornar resultado a Nova
-            #tool_response = []
             tool_result = [{
                 "toolResult": {
                     "toolUseId": tool_use_id,
@@ -595,7 +610,6 @@ def handle_response(
                     "status": "success"
                 }
             }]
-            #tool_response.append({'toolResult': tool_result})
         
             return invoke(
                 user_id, syllabus_event_id, message_text, usuario_nombre, curso, resources,
@@ -604,9 +618,10 @@ def handle_response(
 
         else:
             raise ValueError(f"Herramienta no reconocida: {tool_name}")
-        
+        '''
         upload_message(alumno_id=user_id, silabo_id=syllabus_event_id, user_msg=message_text, ai_msg=tool_result_text, prompt=system_prompt)
-        return format_success_response(tool_result_text, usage_info, message="Herramienta ejecutada correctamente")   
+        return format_success_response(tool_result_text, usage_info, message="Herramienta ejecutada correctamente")
+        '''
     # Caso 3: Hit token limit (this is one way to handle it.)
     elif stop_reason == 'max_tokens':
         answer_text = next((block.get('text', '') for block in content_blocks if 'text' in block), '')
